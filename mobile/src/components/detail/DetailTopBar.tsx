@@ -61,7 +61,8 @@ export function DetailTopBar({
               <SearchTag
                 key={`${tag.text}-${index}`}
                 text={tag.text}
-                onPress={tag.onClose}
+                onPress={tag.onPress}
+                onClose={tag.onClose}
               />
             ))}
           </View>
@@ -77,12 +78,12 @@ export function DetailTopBar({
   );
 }
 
-function SearchTag({ text, onPress }: { text: string; onPress: () => void }) {
+function SearchTag({ text, onPress, onClose }: { text: string; onPress?: () => void; onClose: () => void }) {
   return (
     <Pressable
       onPress={event => {
         event.stopPropagation();
-        onPress();
+        onPress?.();
       }}
       style={styles.tag}
     >
@@ -93,7 +94,7 @@ function SearchTag({ text, onPress }: { text: string; onPress: () => void }) {
         hitSlop={8}
         onPress={event => {
           event.stopPropagation();
-          onPress();
+          onClose();
         }}
         style={styles.tagClose}
       >

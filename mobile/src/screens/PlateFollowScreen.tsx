@@ -299,6 +299,8 @@ function PlateCard({
             onViewOriginalText(
               buildOriginalTextPayload({
                 text: item.originalText,
+                intent: item.type,
+                offerType: item.offerType,
                 country: item.country,
                 factoryNo: item.factoryNo,
                 productName: item.productName,

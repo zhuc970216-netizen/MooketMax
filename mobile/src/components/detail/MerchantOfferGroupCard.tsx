@@ -33,6 +33,7 @@ type Props = {
   onCopyPhone?: string;
   onDial?: string;
   onViewOriginalText?: (payload: OriginalTextPayload) => void;
+  onMerchantPress?: () => void;
   defaultExpanded?: boolean;
 };
 
@@ -45,6 +46,7 @@ function MerchantOfferGroupCardInner({
   onCopyPhone,
   onDial,
   onViewOriginalText,
+  onMerchantPress,
   defaultExpanded,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
@@ -80,7 +82,16 @@ function MerchantOfferGroupCardInner({
                   <FamousCrown />
                 </View>
               ) : null}
-              <Text style={styles.merchantName}>{merchantName}</Text>
+              <Pressable
+                disabled={!onMerchantPress}
+                onPress={event => {
+                  event.stopPropagation();
+                  onMerchantPress?.();
+                }}
+                style={styles.merchantNameButton}>
+                <Text style={styles.merchantName} numberOfLines={1}>{merchantName}</Text>
+                <Text style={styles.merchantNameChevron}> &gt;</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -290,6 +301,8 @@ function EmployeeOfferRow({
             onViewOriginalText?.(
               buildOriginalTextPayload({
                 text: offer.offerOriginalText,
+                intent: plateType,
+                offerType: offer.offerType,
                 country,
                 factoryNo,
                 productName,
@@ -521,14 +534,30 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#8A6600',
   },
-  merchantName: {
-    flex: 1,
+  merchantNameButton: {
     flexShrink: 1,
+    flexGrow: 0,
+    minWidth: 0,
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  merchantName: {
+    flexShrink: 1,
+    minWidth: 0,
     color: colors.text,
     fontSize: 16,
     lineHeight: 22,
     fontWeight: '600',
-    flexWrap: 'wrap',
+  },
+  merchantNameChevron: {
+    color: colors.text,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '600',
+    marginLeft: 2,
+    flexShrink: 0,
   },
   tagRow: {
     flexDirection: 'row',
@@ -580,24 +609,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 4,
   },
   userBlock: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     flex: 1,
+    minWidth: 0,
   },
   userName: {
     color: colors.text,
     fontSize: 14,
     fontWeight: '500',
     flexShrink: 1,
+    minWidth: 0,
   },
   priceCol: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 8,
+    flexShrink: 0,
   },
   priceLineSmall: {
     flexDirection: 'row',

@@ -10,6 +10,7 @@ import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
 import {
   buildMerchantDetailInitialFilters,
+  buildMerchantSelectionFromRoute,
   getMerchantDefaultTab,
   loadMerchantSearchResults,
   type MerchantSearchResult,
@@ -42,13 +43,41 @@ export function MerchantSearchResultsScreen({navigation, route}: Props) {
     navigation.popToTop();
     navigation.navigate('Search', {category, keyword: searchKeyword, initialTab: 'merchant'});
   }, [category, navigation, searchKeyword]);
+  const handleTagClose = useCallback(
+    (index: number) => {
+      if (tags.length <= 1) {
+        openSearch();
+        return;
+      }
+      const nextTarget = removeMerchantSearchTargetTag(target, index);
+      if (!nextTarget) {
+        openSearch();
+        return;
+      }
+      const nextSearchKeyword = getMerchantSearchKeywordFromTarget(nextTarget);
+      const nextMerchantSearch = buildMerchantSelectionFromTarget(nextTarget);
+      if (!nextMerchantSearch) {
+        navigation.popToTop();
+        navigation.navigate('Search', {category, keyword: nextSearchKeyword || searchKeyword, initialTab: 'merchant'});
+        return;
+      }
+      navigation.replace('MerchantSearchResults', {
+        category,
+        searchKeyword: nextSearchKeyword || searchKeyword,
+        tags: buildMerchantSearchResultTags(nextTarget, nextSearchKeyword || searchKeyword),
+        merchantSearch: nextMerchantSearch,
+        target: nextTarget,
+      });
+    },
+    [category, navigation, openSearch, searchKeyword, tags.length, target],
+  );
 
   return (
     <View style={styles.container}>
       <DetailTopBar
         onBack={() => navigation.goBack()}
         onSearchPress={openSearch}
-        tags={tags.map(text => ({text, onClose: openSearch}))}
+        tags={tags.map((text, index) => ({text, onClose: () => handleTagClose(index)}))}
         topSlot={
           <OfferInquiryTabs
             tab="merchant"
@@ -101,6 +130,18 @@ function navigateToTarget(
   initialTab: OfferTab,
 ) {
   switch (target.screen) {
+    case 'Search':
+      navigation.popToTop();
+      navigation.navigate('Search', {category, keyword: target.keyword || searchKeyword, initialTab});
+      return;
+    case 'Merchant':
+      navigation.replace('Merchant', {
+        merchantId: target.merchantId,
+        category,
+        initialTab,
+        initialCategory: 'all',
+      });
+      return;
     case 'Product':
       navigation.replace('Product', {
         productId: target.productId,
@@ -158,20 +199,111 @@ function navigateToTarget(
         disableTransition: true,
       });
       return;
-    case 'OfferFeed':
-      navigation.replace('OfferFeed', {
-        category,
-        initialTab,
-        keyword: target.keyword ?? searchKeyword,
-        queryKeyword: target.queryKeyword,
-        merchantId: target.merchantId,
+  }
+}
+
+function removeMerchantSearchTargetTag(target: Target, index: number): Target | null {
+  switch (target.screen) {
+    case 'CountryFactoryProduct':
+      return index === 0
+        ? {screen: 'Search', keyword: target.productName}
+        : {screen: 'Factory', country: target.country, factoryNo: target.factoryNo};
+    case 'CountryProduct':
+      return index === 0
+        ? {screen: 'Search', keyword: target.productName}
+        : {screen: 'Country', country: target.country};
+    case 'BrandProduct':
+      return index === 0
+        ? {screen: 'Search', keyword: target.productName}
+        : {screen: 'Brand', brandName: target.brandName};
+    default:
+      return null;
+  }
+}
+
+function buildMerchantSelectionFromTarget(target: Target): MerchantSearchSelection | null {
+  switch (target.screen) {
+    case 'Search':
+      return buildMerchantSelectionFromRoute({keyword: target.keyword});
+    case 'Merchant':
+      return buildMerchantSelectionFromRoute({keyword: String(target.merchantId), merchantId: target.merchantId});
+    case 'Product':
+      return buildMerchantSelectionFromRoute({keyword: target.productName, productName: target.productName});
+    case 'Country':
+      return buildMerchantSelectionFromRoute({keyword: target.country, country: target.country});
+    case 'Factory':
+      return buildMerchantSelectionFromRoute({
+        keyword: `${target.country}${target.factoryNo}`,
+        country: target.country,
+        factoryNo: target.factoryNo,
+      });
+    case 'CountryProduct':
+      return buildMerchantSelectionFromRoute({
+        keyword: `${target.country} ${target.productName}`,
+        country: target.country,
+        productName: target.productName,
+      });
+    case 'CountryFactoryProduct':
+      return buildMerchantSelectionFromRoute({
+        keyword: `${target.country}${target.factoryNo} ${target.productName}`,
+        country: target.country,
+        factoryNo: target.factoryNo,
+        productName: target.productName,
+      });
+    case 'Brand':
+      return buildMerchantSelectionFromRoute({keyword: target.brandName, brandName: target.brandName});
+    case 'BrandProduct':
+      return buildMerchantSelectionFromRoute({
+        keyword: `${target.brandName} ${target.productName}`,
         brandName: target.brandName,
         productName: target.productName,
-        keywordScope: target.keywordScope,
-        initialFilters: target.initialFilters,
-        disableTransition: true,
       });
-      return;
+  }
+}
+
+function getMerchantSearchKeywordFromTarget(target: Target) {
+  switch (target.screen) {
+    case 'Search':
+      return target.keyword;
+    case 'Merchant':
+      return '';
+    case 'Product':
+      return target.productName;
+    case 'Country':
+      return target.country;
+    case 'Factory':
+      return `${target.country}${target.factoryNo}`;
+    case 'CountryProduct':
+      return `${target.country} ${target.productName}`;
+    case 'CountryFactoryProduct':
+      return `${target.country}${target.factoryNo} ${target.productName}`;
+    case 'Brand':
+      return target.brandName;
+    case 'BrandProduct':
+      return `${target.brandName} ${target.productName}`;
+  }
+}
+
+function buildMerchantSearchResultTags(target: Target, fallback: string): string[] {
+  switch (target.screen) {
+    case 'Search':
+      return [fallback];
+    case 'Merchant':
+      return [fallback];
+    case 'Product':
+      return [target.productName];
+    case 'Country':
+      return [target.country];
+    case 'Factory':
+      return [`${target.country}${target.factoryNo}`];
+    case 'CountryProduct':
+      return [target.country, target.productName];
+    case 'CountryFactoryProduct':
+      return [`${target.country}${target.factoryNo}`, target.productName];
+    case 'Brand':
+      return [target.brandName];
+    case 'BrandProduct':
+      return [target.brandName, target.productName];
   }
 }
 
@@ -322,6 +454,7 @@ const styles = StyleSheet.create({
   },
   sampleList: {
     marginTop: 8,
+    marginLeft: 28,
     flexDirection: 'row',
     gap: 8,
   },

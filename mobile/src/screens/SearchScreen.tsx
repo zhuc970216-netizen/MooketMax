@@ -415,7 +415,7 @@ export function SearchScreen({route, navigation}: Props) {
     navigateSuggestion(item, parts, {country, factoryNo, productName, brandName});
   }
 
-  function handleHistorySelect(history: SearchHistory) {
+  async function handleHistorySelect(history: SearchHistory) {
     Keyboard.dismiss();
     const searchWord = getStandardSearchWord(history.searchWord);
     if (!searchWord) return;
@@ -450,12 +450,16 @@ export function SearchScreen({route, navigation}: Props) {
       return;
     }
 
-    if (history.country && history.factoryNo && history.productName) {
-      prefetchCountryFactoryProduct(selectedCategory, history.country, history.factoryNo, history.productName);
+    const historyCountry = history.country ?? null;
+    const historyFactoryNo = history.factoryNo ?? null;
+    const historyProductName = history.productName ?? null;
+
+    if (historyCountry && historyFactoryNo && historyProductName) {
+      prefetchCountryFactoryProduct(selectedCategory, historyCountry, historyFactoryNo, historyProductName);
       navigation.navigate('CountryFactoryProduct', {
-        country: history.country,
-        factoryNo: history.factoryNo,
-        productName: history.productName,
+        country: historyCountry,
+        factoryNo: historyFactoryNo,
+        productName: historyProductName,
         category: selectedCategory,
         searchKeyword: searchWord,
         initialTab: detailTab,
@@ -463,11 +467,11 @@ export function SearchScreen({route, navigation}: Props) {
       return;
     }
 
-    if (history.country && history.productName) {
-      prefetchCountryProduct(selectedCategory, history.country, history.productName);
+    if (historyCountry && historyProductName) {
+      prefetchCountryProduct(selectedCategory, historyCountry, historyProductName);
       navigation.navigate('CountryProduct', {
-        country: history.country,
-        productName: history.productName,
+        country: historyCountry,
+        productName: historyProductName,
         category: selectedCategory,
         searchKeyword: searchWord,
         initialTab: detailTab,
@@ -475,11 +479,11 @@ export function SearchScreen({route, navigation}: Props) {
       return;
     }
 
-    if (history.country && history.factoryNo) {
-      prefetchFactory(selectedCategory, history.country, history.factoryNo);
+    if (historyCountry && historyFactoryNo) {
+      prefetchFactory(selectedCategory, historyCountry, historyFactoryNo);
       navigation.navigate('Factory', {
-        country: history.country,
-        factoryNo: history.factoryNo,
+        country: historyCountry,
+        factoryNo: historyFactoryNo,
         category: selectedCategory,
         searchKeyword: searchWord,
         initialTab: detailTab,
@@ -510,10 +514,10 @@ export function SearchScreen({route, navigation}: Props) {
       return;
     }
 
-    if (history.country) {
-      prefetchCountry(selectedCategory, history.country);
+    if (historyCountry) {
+      prefetchCountry(selectedCategory, historyCountry);
       navigation.navigate('Country', {
-        country: history.country,
+        country: historyCountry,
         category: selectedCategory,
         searchKeyword: searchWord,
         initialTab: detailTab,
@@ -521,16 +525,18 @@ export function SearchScreen({route, navigation}: Props) {
       return;
     }
 
-    navigateHistoryToFeed(searchWord);
-  }
+    try {
+      const historySuggestions = await loadSuggestionsForInput(selectedTab, selectedCategory, searchWord);
+      const bestSuggestion = findExactHistorySuggestion(historySuggestions, searchWord);
+      if (bestSuggestion) {
+        handleSelect(bestSuggestion);
+        return;
+      }
+    } catch {
+      // Fall through to the no-match hint below.
+    }
 
-  function navigateHistoryToFeed(searchWord: string) {
-    navigation.navigate('OfferFeed', {
-      category: selectedCategory,
-      initialTab: selectedTab === 'merchant' ? 'offer' : selectedTab,
-      keyword: searchWord,
-      queryKeyword: searchWord,
-    });
+    Alert.alert('暂无匹配结果', '这个历史搜索词暂时没有可进入的结果页');
   }
 
   function navigateHistoryToMerchantResults(history: SearchHistory, searchWord: string) {
@@ -693,6 +699,15 @@ export function SearchScreen({route, navigation}: Props) {
       {text: '取消', style: 'cancel'},
       {text: '清除', style: 'destructive', onPress: () => clearHistories().catch(() => undefined)},
     ]);
+  }
+
+  function clearMerchantSelection() {
+    setKeyword('');
+    setMerchantSelection(null);
+    setSuggestions([]);
+    setMerchantResults([]);
+    setCategoryMenuOpen(false);
+    setTimeout(() => inputRef.current?.focus(), 0);
   }
 
   return (
@@ -1158,16 +1173,13 @@ function buildMerchantSearchTarget(
 
   switch (item.matchType) {
     case 'merchant':
-      return {
-        screen: 'OfferFeed',
-        keyword: display,
-        queryKeyword: display,
-        merchantId: item.targetId,
-      };
+      return item.targetId == null
+        ? {screen: 'Search', keyword: display}
+        : {screen: 'Merchant', merchantId: item.targetId};
     case 'product': {
       const productId = toNumericId(item.targetId);
       return productId == null
-        ? {screen: 'OfferFeed', keyword: display, queryKeyword: display, productName: productValue, keywordScope: 'product'}
+        ? {screen: 'Search', keyword: display}
         : {
             screen: 'Product',
             productId,
@@ -1180,7 +1192,7 @@ function buildMerchantSearchTarget(
       if (countryValue && factoryValue) {
         return {screen: 'Factory', country: countryValue, factoryNo: factoryValue};
       }
-      return {screen: 'OfferFeed', keyword: display, queryKeyword: display};
+      return {screen: 'Search', keyword: display};
     case 'brand':
       if (item.type === '品牌+产品' && (standard.brandName || parts.length >= 2)) {
         return {
@@ -1206,9 +1218,9 @@ function buildMerchantSearchTarget(
           productName: productValue,
         };
       }
-      return {screen: 'OfferFeed', keyword: display, queryKeyword: display};
+      return {screen: 'Search', keyword: display};
     default:
-      return {screen: 'OfferFeed', keyword: display, queryKeyword: display};
+      return {screen: 'Search', keyword: display};
   }
 }
 
@@ -1217,6 +1229,10 @@ function buildMerchantSearchTags(
   fallback: string,
 ): string[] {
   switch (target.screen) {
+    case 'Search':
+      return [fallback];
+    case 'Merchant':
+      return [fallback];
     case 'Product':
       return [target.productName];
     case 'Country':
@@ -1231,8 +1247,6 @@ function buildMerchantSearchTags(
       return [target.brandName];
     case 'BrandProduct':
       return [target.brandName, target.productName];
-    case 'OfferFeed':
-      return [fallback];
   }
 }
 
@@ -1356,6 +1370,7 @@ function parseMerchantTime(value?: string | null) {
   return 0;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function getMerchantCategoryMark(item: MerchantSearchResult, fallback: string) {
   const categories = Array.from(new Set(item.samples.map(sample => getSampleCategoryMark(sample, fallback)).filter(Boolean)));
   if (categories.length === 1) return categories[0];
@@ -1404,6 +1419,7 @@ function buildMerchantFactoryKey(country?: string | null, factoryNo?: string | n
   return `${countryText}${factoryText}`;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function buildMerchantBrandQueries(
   keyword: string,
   suggestions: SearchSuggest[],
@@ -1479,6 +1495,15 @@ function buildMerchantSearchCondition(keyword: string): MerchantSearchCondition 
     };
   }
 
+  if (parts.length >= 2 && looksLikeCountryText(parts[0]) && looksLikeFactoryNo(parts[1])) {
+    return {
+      raw,
+      country: parts[0],
+      factoryNo: parts[1],
+      productName: parts.slice(2).join(' ') || null,
+    };
+  }
+
   if (parts.length >= 2 && looksLikeCountryText(parts[0])) {
     return {
       raw,
@@ -1506,24 +1531,38 @@ function buildMerchantSearchCondition(keyword: string): MerchantSearchCondition 
 }
 
 function splitCompactCountryFactoryProduct(raw: string, compact: string): MerchantSearchCondition | null {
-  const match = compact.match(/^([\u4e00-\u9fa5]+?)([a-zA-Z]{0,8}\d[\w-]*)([\u4e00-\u9fa5].*)?$/);
-  if (!match || !looksLikeCountryText(match[1])) return null;
-  return {
-    raw,
-    country: match[1],
-    factoryNo: match[2],
-    productName: match[3] || null,
-  };
+  const country = [...merchantSearchCountries]
+    .sort((left, right) => right.length - left.length)
+    .find(item => compact.startsWith(normalizeSearchComparable(item)));
+  if (!country) return null;
+  const tail = raw.replace(/\s+/g, '').slice(country.length);
+  const factoryMatch = tail.match(/^([A-Za-z]*\d[A-Za-z0-9-]*)(.*)$/);
+  if (factoryMatch) {
+    return {
+      raw,
+      country,
+      factoryNo: factoryMatch[1],
+      productName: factoryMatch[2] || null,
+    };
+  }
+  return tail
+    ? {
+        raw,
+        country,
+        productName: tail,
+      }
+    : {raw, country};
 }
 
 function splitCountryFactoryPart(value: string) {
-  const compact = normalizeSearchComparable(value);
-  const match = compact.match(/^([\u4e00-\u9fa5]+?)([a-zA-Z]{0,8}\d[\w-]*)$/);
-  if (!match || !looksLikeCountryText(match[1])) return null;
-  return {
-    country: match[1],
-    factoryNo: match[2],
-  };
+  const compact = value.replace(/\s+/g, '');
+  const country = [...merchantSearchCountries]
+    .sort((left, right) => right.length - left.length)
+    .find(item => compact.startsWith(item));
+  if (!country) return null;
+  const factoryNo = compact.slice(country.length);
+  if (!looksLikeFactoryNo(factoryNo)) return null;
+  return {country, factoryNo};
 }
 
 function looksLikeFactoryNo(value: string) {
@@ -1554,14 +1593,6 @@ function merchantFeedItemMatchesCondition(item: OfferFeedItem, condition: Mercha
   if (hasStructuredCondition) return true;
 
   const raw = condition.raw;
-  function clearMerchantSelection() {
-    setKeyword('');
-    setMerchantSelection(null);
-    setSuggestions([]);
-    setMerchantResults([]);
-    setCategoryMenuOpen(false);
-    setTimeout(() => inputRef.current?.focus(), 0);
-  }
 
   return (
     fieldIncludes(item.productName, raw) ||
@@ -1589,6 +1620,7 @@ function normalizeSearchComparable(value?: string | null) {
   return value?.trim().toLowerCase().replace(/\s+/g, '') || '';
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function buildMerchantSampleText(sample: MerchantSearchSample) {
   const productName = sample.productName?.trim() || '未知产品';
   const country = sample.country?.trim() ?? '';
@@ -1679,6 +1711,12 @@ function uniqueBySearchWord(items: SearchHistory[]): SearchHistory[] {
   return out;
 }
 
+function findExactHistorySuggestion(items: SearchSuggest[], searchWord: string): SearchSuggest | null {
+  const target = normalizeSearchComparable(searchWord);
+  if (!target) return null;
+  return items.find(item => normalizeSearchComparable(getStandardSearchWord(item.text)) === target) ?? null;
+}
+
 function buildMerchantSearchSelectionFromHistory(history: SearchHistory, display: string): MerchantSearchSelection {
   const brandProduct = parseHistoryBrandProduct(history, display);
   return {
@@ -1736,7 +1774,7 @@ function buildMerchantSearchTargetFromHistory(
     return {screen: 'Country', country: history.country};
   }
 
-  return {screen: 'OfferFeed', keyword: display, queryKeyword: display};
+  return {screen: 'Search', keyword: display};
 }
 
 function parseHistoryBrandProduct(history: SearchHistory, display: string): MerchantBrandQuery | null {
@@ -2045,6 +2083,7 @@ const styles = StyleSheet.create({
   },
   merchantSampleList: {
     marginTop: 10,
+    marginLeft: 28,
     flexDirection: 'row',
     gap: 8,
   },

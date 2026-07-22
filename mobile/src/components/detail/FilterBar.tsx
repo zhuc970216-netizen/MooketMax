@@ -1,5 +1,5 @@
-import React from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import React, {useCallback, useRef} from 'react';
+import {Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 import {colors} from '../../theme/colors';
 
@@ -28,11 +28,50 @@ type Props = {
   filters: FilterDef[];
   active: FilterKey | null;
   onPress: (key: FilterKey) => void;
+  onBottomLayout?: (bottom: number) => void;
 };
 
-export function FilterBar({filters, active, onPress}: Props) {
+export function FilterBar({filters, active, onPress, onBottomLayout}: Props) {
+  const wrapRef = useRef<View>(null);
+  const heightRef = useRef(0);
+
+  const measureBottom = useCallback((afterMeasure?: () => void) => {
+    if (!onBottomLayout) {
+      afterMeasure?.();
+      return;
+    }
+    requestAnimationFrame(() => {
+      if (!wrapRef.current) {
+        afterMeasure?.();
+        return;
+      }
+      wrapRef.current.measureInWindow((_x, y, _width, height) => {
+        if (Number.isFinite(y) && Number.isFinite(height)) {
+          const measuredHeight = height > 0 ? height : heightRef.current;
+          onBottomLayout(y + measuredHeight);
+        }
+        afterMeasure?.();
+      });
+    });
+  }, [onBottomLayout]);
+
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      heightRef.current = event.nativeEvent.layout.height;
+      measureBottom();
+    },
+    [measureBottom],
+  );
+
+  const handlePress = useCallback(
+    (key: FilterKey) => {
+      measureBottom(() => onPress(key));
+    },
+    [measureBottom, onPress],
+  );
+
   return (
-    <View style={styles.wrap}>
+    <View ref={wrapRef} collapsable={false} onLayout={handleLayout} style={styles.wrap}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {filters.map(item => (
           <FilterChip
@@ -42,7 +81,7 @@ export function FilterBar({filters, active, onPress}: Props) {
             active={active === item.key}
             toggle={item.toggle}
             famous={item.key === 'famousMerchant'}
-            onPress={() => onPress(item.key)}
+            onPress={() => handlePress(item.key)}
             onClear={item.onClear}
           />
         ))}

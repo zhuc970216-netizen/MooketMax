@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  StatusBar,
   Text,
   View,
 } from 'react-native';
@@ -19,15 +20,31 @@ type Props = {
   onReset?: () => void;
   onConfirm?: () => void;
   showActions?: boolean;
+  topOffset?: number;
   children: React.ReactNode;
 };
 
-export function FilterPanelSheet({visible, title, onClose, onReset, onConfirm, showActions = true, children}: Props) {
+export function FilterPanelSheet({
+  visible,
+  title,
+  onClose,
+  onReset,
+  onConfirm,
+  showActions = true,
+  topOffset = 0,
+  children,
+}: Props) {
+  const modalTopOffset = Math.max(
+    0,
+    topOffset + (Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0),
+  );
+
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <Pressable style={styles.backdrop} onPress={onClose}>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.modalRoot}>
+        <Pressable style={{height: modalTopOffset}} onPress={onClose} />
         <KeyboardAvoidingView
-          style={styles.keyboardArea}
+          style={styles.panelArea}
           pointerEvents="box-none"
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}>
@@ -52,8 +69,9 @@ export function FilterPanelSheet({visible, title, onClose, onReset, onConfirm, s
               </View>
             ) : null}
           </Pressable>
+          <Pressable style={styles.mask} onPress={onClose} />
         </KeyboardAvoidingView>
-      </Pressable>
+      </View>
     </Modal>
   );
 }
@@ -93,22 +111,31 @@ export function MultiSelectChips({
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
+  modalRoot: {
     flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-start',
+    backgroundColor: 'transparent',
   },
-  keyboardArea: {
+  panelArea: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'flex-start',
+  },
+  mask: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.10)',
   },
   sheet: {
-    minHeight: 240,
-    maxHeight: '78%',
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    minHeight: 112,
+    maxHeight: '68%',
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     backgroundColor: '#FFFFFF',
     paddingBottom: 12,
+    shadowColor: '#000000',
+    shadowOffset: {width: 0, height: 4},
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    elevation: 8,
   },
   titleRow: {
     paddingHorizontal: 20,

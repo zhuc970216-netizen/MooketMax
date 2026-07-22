@@ -137,6 +137,7 @@ export function OfferFeedScreen({navigation, route}: Props) {
   const [originalText, setOriginalText] = useState<OriginalTextPayload | null>(null);
   const [intentKeys, setIntentKeys] = useState<Set<string>>(new Set());
   const [sortOverlayTop, setSortOverlayTop] = useState(0);
+  const [filterPanelTop, setFilterPanelTop] = useState(0);
   const requestSeqRef = useRef(0);
 
   useFocusEffect(
@@ -631,7 +632,12 @@ export function OfferFeedScreen({navigation, route}: Props) {
           const {y, height} = event.nativeEvent.layout;
           setSortOverlayTop(y + height);
         }}>
-        <FilterBar filters={filterDefs} active={activeFilter as DetailFilterKey | null} onPress={handleFilterPress} />
+        <FilterBar
+          filters={filterDefs}
+          active={activeFilter as DetailFilterKey | null}
+          onPress={handleFilterPress}
+          onBottomLayout={setFilterPanelTop}
+        />
       </View>
 
       <FlatList
@@ -716,6 +722,7 @@ export function OfferFeedScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={tab !== 'merchant' && activeFilter === 'region'}
+        topOffset={filterPanelTop}
         title="地区"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -732,6 +739,7 @@ export function OfferFeedScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={tab !== 'merchant' && activeFilter === 'priceRange'}
+        topOffset={filterPanelTop}
         title="价格区间"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -770,6 +778,7 @@ export function OfferFeedScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={tab !== 'merchant' && activeFilter === 'goodsType'}
+        topOffset={filterPanelTop}
         title="货物类型"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -786,6 +795,7 @@ export function OfferFeedScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={tab !== 'merchant' && activeFilter === 'feedingMethod'}
+        topOffset={filterPanelTop}
         title="饲养方式"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -802,6 +812,7 @@ export function OfferFeedScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={tab !== 'merchant' && activeFilter === 'tag'}
+        topOffset={filterPanelTop}
         title="标签"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -1008,6 +1019,8 @@ export function OfferFeedCard({
             onViewOriginalText(
               buildOriginalTextPayload({
                 text: item.offerOriginalText,
+                intent: isInquiry ? 'inquiry' : 'offer',
+                offerType: item.offerType,
                 country: item.country,
                 factoryNo: item.factoryNo,
                 productName: item.productName,

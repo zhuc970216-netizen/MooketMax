@@ -18,26 +18,15 @@ export type RootStackParamList = {
       merchantName?: string | null;
     };
     target:
+      | {screen: 'Search'; keyword: string}
+      | {screen: 'Merchant'; merchantId: number | string}
       | {screen: 'Product'; productId: number; productName: string}
       | {screen: 'Country'; country: string}
       | {screen: 'Factory'; country: string; factoryNo: string}
       | {screen: 'CountryProduct'; country: string; productName: string}
       | {screen: 'CountryFactoryProduct'; country: string; factoryNo: string; productName: string}
       | {screen: 'Brand'; brandName: string}
-      | {screen: 'BrandProduct'; brandName: string; productName: string}
-      | {
-          screen: 'OfferFeed';
-          keyword?: string;
-          queryKeyword?: string;
-          merchantId?: number | string;
-          brandName?: string;
-          productName?: string;
-          keywordScope?: 'all' | 'product';
-          initialFilters?: {
-            country?: string | null;
-            factoryNo?: string | null;
-          };
-        };
+      | {screen: 'BrandProduct'; brandName: string; productName: string};
   };
   OfferFeed: {
     category: string;

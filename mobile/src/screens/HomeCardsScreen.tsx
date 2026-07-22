@@ -146,7 +146,7 @@ export function HomeCardsScreen({navigation, route}: Props) {
           loading ? (
             <ActivityIndicator color={colors.primary} style={styles.loading} />
           ) : (
-            <EmptySelfSelectState onAdd={() => navigation.navigate('Search', {category})} />
+            <EmptySelfSelectState onAdd={() => navigation.navigate('Search', {category, initialTab: 'offer'})} />
           )
         ) : (
           <View style={styles.gridRow}>

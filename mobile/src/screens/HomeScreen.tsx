@@ -41,8 +41,9 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 const categories = ['牛', '猪'];
 const HOME_INQUIRY_PAGE_SIZE = 30;
 const HOME_INQUIRY_VISIBLE_COUNT = 3;
-const HOME_INQUIRY_ROW_HEIGHT = 42;
+const HOME_INQUIRY_ROW_HEIGHT = 32;
 const HOME_INQUIRY_SCROLL_MS_PER_ROW = 2400;
+const HOME_INQUIRY_SCROLL_ANIMATION_MS = 520;
 
 // 18x18 主色「移除删除」icon
 const archiveDelIconXml = `<svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M12.6152 1.5C14.2125 1.50013 15.5098 2.80482 15.5176 4.39453V14.9629C15.5174 16.32 14.5499 16.8901 13.3652 16.2305L9.70508 14.1973C9.32267 13.9798 8.69274 13.9799 8.30273 14.1973L4.64258 16.2305C3.45775 16.8828 2.49042 16.3126 2.49023 14.9629V4.39453C2.49049 2.80482 3.78753 1.50012 5.38477 1.5H12.6152ZM7.125 7.4248C6.81756 7.4248 6.5626 7.67989 6.5625 7.9873C6.5625 8.2948 6.8175 8.5498 7.125 8.5498H10.875C11.1825 8.5498 11.4375 8.2948 11.4375 7.9873C11.4374 7.67989 11.1824 7.4248 10.875 7.4248H7.125Z" fill="#006A61"/></svg>`;
@@ -68,6 +69,8 @@ export function HomeScreen({navigation}: Props) {
   const sectionListRef = useRef<SectionList>(null);
   const inquiryTickerY = useRef(new Animated.Value(0)).current;
   const inquiryTickerLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const inquiryTickerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inquiryTickerStepRef = useRef(0);
   const handleEditToggle = useCallback(() => {
     setEditMode(prev => {
       const next = !prev;
@@ -157,7 +160,7 @@ export function HomeScreen({navigation}: Props) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [category]);
+  }, [category, inquiryTickerY]);
 
   useEffect(() => {
     loadRef.current = load;
@@ -180,42 +183,60 @@ export function HomeScreen({navigation}: Props) {
   useEffect(() => {
     inquiryTickerLoopRef.current?.stop();
     inquiryTickerLoopRef.current = null;
+    if (inquiryTickerIntervalRef.current) {
+      clearInterval(inquiryTickerIntervalRef.current);
+      inquiryTickerIntervalRef.current = null;
+    }
+    inquiryTickerStepRef.current = 0;
 
-    if (homeInquiries.length <= HOME_INQUIRY_VISIBLE_COUNT) {
-      if (homeInquiries.length <= HOME_INQUIRY_VISIBLE_COUNT) {
-        inquiryTickerY.setValue(0);
-      }
+    if (homeInquiries.length <= 1) {
+      inquiryTickerY.setValue(0);
       return undefined;
     }
 
     inquiryTickerY.setValue(0);
-    const loop = Animated.loop(
-      Animated.timing(inquiryTickerY, {
-        toValue: -(homeInquiries.length * HOME_INQUIRY_ROW_HEIGHT),
-        duration: homeInquiries.length * HOME_INQUIRY_SCROLL_MS_PER_ROW,
-        easing: Easing.linear,
+    inquiryTickerIntervalRef.current = setInterval(() => {
+      const nextStep = inquiryTickerStepRef.current + 1;
+      const animation = Animated.timing(inquiryTickerY, {
+        toValue: -(nextStep * HOME_INQUIRY_ROW_HEIGHT),
+        duration: HOME_INQUIRY_SCROLL_ANIMATION_MS,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
-      }),
-      {resetBeforeIteration: true},
-    );
-    inquiryTickerLoopRef.current = loop;
-    loop.start();
+      });
+
+      inquiryTickerLoopRef.current = animation;
+      animation.start(({finished}) => {
+        if (!finished) return;
+        if (nextStep >= homeInquiries.length) {
+          inquiryTickerStepRef.current = 0;
+          inquiryTickerY.setValue(0);
+        } else {
+          inquiryTickerStepRef.current = nextStep;
+        }
+      });
+    }, HOME_INQUIRY_SCROLL_MS_PER_ROW);
 
     return () => {
-      loop.stop();
-      if (inquiryTickerLoopRef.current === loop) {
-        inquiryTickerLoopRef.current = null;
+      inquiryTickerLoopRef.current?.stop();
+      inquiryTickerLoopRef.current = null;
+      if (inquiryTickerIntervalRef.current) {
+        clearInterval(inquiryTickerIntervalRef.current);
+        inquiryTickerIntervalRef.current = null;
       }
     };
   }, [homeInquiries.length, inquiryTickerY]);
 
   const visibleHomeInquiries = useMemo(() => {
     if (homeInquiries.length === 0) return [];
-    if (homeInquiries.length <= HOME_INQUIRY_VISIBLE_COUNT) {
+    if (homeInquiries.length === 1) {
       return homeInquiries;
     }
 
-    return [...homeInquiries, ...homeInquiries];
+    const repeated = [...homeInquiries];
+    while (repeated.length < homeInquiries.length + HOME_INQUIRY_VISIBLE_COUNT) {
+      repeated.push(...homeInquiries);
+    }
+    return repeated;
   }, [homeInquiries]);
 
   function switchCategory(value: string) {
@@ -224,8 +245,8 @@ export function HomeScreen({navigation}: Props) {
     setEditMode(false);
   }
 
-  function openOfferFeed(initialTab: 'offer' | 'inquiry') {
-    navigation.navigate('OfferFeed', {category, initialTab, inquiryOnly: initialTab === 'inquiry'});
+  function openInquiryFeed() {
+    navigation.navigate('OfferFeed', {category, initialTab: 'inquiry', inquiryOnly: true});
   }
 
   function openSearch(initialTab?: 'offer' | 'inquiry' | 'merchant') {
@@ -357,7 +378,7 @@ export function HomeScreen({navigation}: Props) {
             offerCount={stat?.totalOfferCount}
             inquiries={visibleHomeInquiries}
             tickerTranslateY={inquiryTickerY}
-            onInquiryPress={() => openOfferFeed('inquiry')}
+            onInquiryPress={openInquiryFeed}
             onOfferSearchPress={() => openSearch('offer')}
             onMerchantSearchPress={() => openSearch('merchant')}
           />
@@ -400,7 +421,7 @@ export function HomeScreen({navigation}: Props) {
             return <ActivityIndicator color={colors.primary} style={styles.cardsLoading} />;
           }
           if (cards.length === 0) {
-            return <EmptySelfSelectState onAdd={openSearch} />;
+            return <EmptySelfSelectState onAdd={() => openSearch('offer')} />;
           }
           return (
             <View style={styles.gridRow}>
@@ -511,27 +532,7 @@ function Tab({
   );
 }
 
-function StatItem({label, value, onPress}: {label: string; value: string | number; onPress?: () => void}) {
-  const content = (
-    <>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </>
-  );
-  if (onPress) {
-    return (
-      <Pressable onPress={onPress} hitSlop={6} style={styles.statItem}>
-        {content}
-      </Pressable>
-    );
-  }
-  return (
-    <View style={styles.statItem}>
-      {content}
-    </View>
-  );
-}
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function StatViewButton({onPress}: {onPress: () => void}) {
   return (
     <Pressable onPress={onPress} hitSlop={6} style={styles.statViewButton}>
@@ -722,7 +723,7 @@ function HomeInquiryTickerRow({
   return (
     <View style={[styles.inquiryTickerRow, showDivider && styles.inquiryTickerDivider]}>
       <View style={styles.homeInquiryBadge}>
-        <Text style={styles.homeInquiryBadgeText}>求购</Text>
+        <Text style={styles.homeInquiryBadgeText}>求</Text>
       </View>
       <Text style={styles.inquiryTickerTitle} numberOfLines={1}>
         {buildHomeInquiryTitle(item)}
@@ -1105,13 +1106,15 @@ const styles = StyleSheet.create({
   tradeGuideGrid: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: 10,
+    gap: 8,
   },
   tradeInquiryCard: {
-    flex: 1.2,
+    flex: 1.38,
     minWidth: 0,
-    minHeight: 220,
-    padding: 14,
+    minHeight: 170,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 8,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#CFE2DF',
@@ -1123,14 +1126,15 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   tradeSideColumn: {
-    flex: 0.88,
+    flex: 0.76,
     minWidth: 0,
-    gap: 10,
+    gap: 8,
   },
   tradeSideCard: {
     flex: 1,
-    minHeight: 105,
-    padding: 10,
+    minHeight: 80,
+    paddingHorizontal: 9,
+    paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#D7E1DF',
@@ -1186,7 +1190,7 @@ const styles = StyleSheet.create({
   },
   inquiryTickerClip: {
     height: HOME_INQUIRY_ROW_HEIGHT * HOME_INQUIRY_VISIBLE_COUNT,
-    marginTop: 14,
+    marginTop: 7,
     borderRadius: 7,
     backgroundColor: '#FFFFFF',
     overflow: 'hidden',
@@ -1196,20 +1200,19 @@ const styles = StyleSheet.create({
   },
   inquiryTickerRow: {
     height: HOME_INQUIRY_ROW_HEIGHT,
-    paddingHorizontal: 10,
+    paddingHorizontal: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 5,
   },
   inquiryTickerDivider: {
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#E2E9E7',
   },
   homeInquiryBadge: {
-    minWidth: 32,
+    width: 20,
     height: 20,
-    paddingHorizontal: 5,
-    borderRadius: 3,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#C8D8FF',
     backgroundColor: '#EEF4FF',
@@ -1221,14 +1224,14 @@ const styles = StyleSheet.create({
     color: '#3767D6',
     fontSize: 11,
     lineHeight: 15,
-    fontWeight: '400',
+    fontWeight: '700',
   },
   inquiryTickerTitle: {
     flex: 1,
     minWidth: 0,
     color: colors.text,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 17,
     fontWeight: '600',
   },
   inquiryTickerEmpty: {
@@ -1261,16 +1264,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   tradeSideSubtitle: {
-    marginTop: 3,
+    marginTop: 2,
     color: colors.textMuted,
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 15,
   },
   tradeSideStat: {
-    marginTop: 8,
+    marginTop: 4,
     color: colors.textMuted,
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 10,
+    lineHeight: 15,
   },
   tradeSideStatValue: {
     fontFamily: fonts.manropeBold,

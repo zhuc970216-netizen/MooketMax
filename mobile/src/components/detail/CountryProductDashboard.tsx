@@ -136,8 +136,12 @@ function ExpandedChart({history}: {history: DailyPrice[]}) {
       .filter(d => Number.isFinite(d.price) && d.price > 0);
   }, [history]);
 
-  const data = filtered.map(d => d.price);
-  const dates = filtered.map(d => d.date);
+  const data = useMemo(() => filtered.map(d => d.price), [filtered]);
+  const dates = useMemo(() => filtered.map(d => d.date), [filtered]);
+  const chartPoints = useMemo(
+    () => buildTrendChartPoints(data, chartWidth, chartHeight),
+    [data, chartHeight, chartWidth],
+  );
 
   if (data.length < 2) {
     return <Text style={styles.empty}>暂无30日趋势数据</Text>;
@@ -149,10 +153,6 @@ function ExpandedChart({history}: {history: DailyPrice[]}) {
       ? [0, Math.floor(length / 4), Math.floor(length / 2), Math.floor((length * 3) / 4), length - 1]
       : data.map((_, i) => i);
   const labels = indices.map(i => formatShort(dates[i]));
-  const chartPoints = useMemo(
-    () => buildTrendChartPoints(data, chartWidth, chartHeight),
-    [data, chartHeight, chartWidth],
-  );
   const selectedPoint = selectedIdx != null ? chartPoints[selectedIdx] : null;
 
   function handlePress(event: {nativeEvent: {locationX: number}}) {

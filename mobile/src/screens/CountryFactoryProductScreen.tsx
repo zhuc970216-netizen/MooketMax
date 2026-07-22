@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
   SectionList,
   Pressable,
   RefreshControl,
@@ -26,6 +27,7 @@ import {colors} from '../theme/colors';
 import type {CountryFactoryProductDetail, MerchantOfferGroup} from '../types/api';
 import {extractCity, splitTags} from '../utils/offer';
 import type {OriginalTextPayload} from '../utils/originalText';
+import {loadMerchantSearchResults} from '../utils/merchantSearchResults';
 import {getTabCount, getTabMerchantCount} from '../utils/tabStats';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CountryFactoryProduct'>;
@@ -70,6 +72,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
   const [originalText, setOriginalText] = useState<OriginalTextPayload | null>(null);
   const handleViewOriginalText = useCallback((value: OriginalTextPayload) => setOriginalText(value), []);
   const [activeFilter, setActiveFilter] = useState<LocalFilterKey | null>(null);
+  const [filterPanelTop, setFilterPanelTop] = useState(0);
 
   const [famousMerchant, setFamousMerchant] = useState(false);
   const [merchants, setMerchants] = useState<Set<string>>(new Set());
@@ -96,6 +99,44 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
       setTab(nextTab);
     },
     [tab],
+  );
+  const openMerchantHome = useCallback(
+    async (group: MerchantOfferGroup) => {
+      const directMerchantId = normalizeMerchantTargetId(group.merchantId);
+      if (directMerchantId) {
+        navigation.navigate('Merchant', {
+          merchantId: directMerchantId,
+          category,
+          initialTab: tab,
+          initialCategory: 'all',
+        });
+        return;
+      }
+
+      const merchantName = group.merchantName?.trim();
+      if (!merchantName || merchantName === unlinkedMerchantLabel) {
+        Alert.alert('发布用户未关联商家', '该分组中的发布用户尚未解析出所属行业商家，所以没有可跳转的商家主页。');
+        return;
+      }
+
+      try {
+        const resolvedMerchantId = await resolveMerchantIdByName(category, merchantName);
+        if (resolvedMerchantId) {
+          navigation.navigate('Merchant', {
+            merchantId: resolvedMerchantId,
+            category,
+            initialTab: tab,
+            initialCategory: 'all',
+          });
+          return;
+        }
+      } catch {
+        // Fall through to the explicit unlinked-state message below.
+      }
+
+      Alert.alert('暂未关联商家主页', '这个商家当前只有名称，尚未关联商家主页，暂时不能进入。');
+    },
+    [category, navigation, tab],
   );
   const selfSelectCard = currentCountry && currentFactoryNo && currentProductName
     ? {
@@ -427,6 +468,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
                   filters={filterDefs}
                   active={activeFilter as FilterKey | null}
                   onPress={handleFilterPress}
+                  onBottomLayout={setFilterPanelTop}
                 />
               </View>
             )}
@@ -440,6 +482,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
                 onCopyPhone={item.merchantPhone ?? undefined}
                 onDial={item.merchantPhone ?? undefined}
                 onViewOriginalText={handleViewOriginalText}
+                onMerchantPress={() => openMerchantHome(item)}
               />
             )}
             ItemSeparatorComponent={() => <View style={styles.itemDivider} />}
@@ -514,6 +557,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'sort'}
+        topOffset={filterPanelTop}
         title="排序方式"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -533,6 +577,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'merchant'}
+        topOffset={filterPanelTop}
         title="商家筛选"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -566,6 +611,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'region'}
+        topOffset={filterPanelTop}
         title="地区"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -582,6 +628,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'priceRange'}
+        topOffset={filterPanelTop}
         title="价格区间"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -625,6 +672,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'goodsType'}
+        topOffset={filterPanelTop}
         title="货物类型"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -641,6 +689,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'feedingMethod'}
+        topOffset={filterPanelTop}
         title="饲养方式"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -657,6 +706,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'tag'}
+        topOffset={filterPanelTop}
         title="标签"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -777,17 +827,49 @@ function normalizeMerchantFilterOptions(options: MerchantFilterOption[]) {
   return result;
 }
 
-function unique(values: string[]) {
-  const set = new Set<string>();
-  const out: string[] = [];
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (!trimmed) continue;
-    if (set.has(trimmed)) continue;
-    set.add(trimmed);
-    out.push(trimmed);
-  }
-  return out;
+async function resolveMerchantIdByName(category: string, merchantName: string) {
+  const normalizedName = normalizeMerchantNameForMatch(merchantName);
+  if (!normalizedName) return null;
+
+  const suggestions = await mooketApi.getSearchSuggestions(category, merchantName).catch(() => []);
+  const suggestion = suggestions.find(item => {
+    if (item.matchType !== 'merchant' || !normalizeMerchantTargetId(item.targetId)) return false;
+    return [item.merchantName, item.standardName, item.text].some(
+      value => normalizeMerchantNameForMatch(value) === normalizedName,
+    );
+  });
+  const suggestionId = normalizeMerchantTargetId(suggestion?.targetId);
+  if (suggestionId) return suggestionId;
+
+  const results = await loadMerchantSearchResults({
+    display: merchantName,
+    matchType: 'merchant',
+    type: '商家',
+    merchantName,
+  });
+  const exact = results.find(item => {
+    if (!normalizeMerchantTargetId(item.merchantId)) return false;
+    return [item.merchantName, item.merchantShortName].some(
+      value => normalizeMerchantNameForMatch(value) === normalizedName,
+    );
+  });
+  return normalizeMerchantTargetId(exact?.merchantId);
+}
+
+function normalizeMerchantTargetId(value?: number | string | null) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text ? value : null;
+}
+
+function normalizeMerchantNameForMatch(value?: string | null) {
+  return stripSuggestionAlias(value).replace(/\s+/g, '').toLowerCase();
+}
+
+function stripSuggestionAlias(value?: string | null) {
+  const text = value?.trim() ?? '';
+  const aliasIndex = text.indexOf('(别名：');
+  return aliasIndex >= 0 ? text.slice(0, aliasIndex).trim() : text;
 }
 
 function toggleSet<T>(set: Set<T>, value: T): Set<T> {
@@ -815,18 +897,6 @@ function parsePriceValue(value?: string | number | null): number | null {
   if (typeof value !== 'string') return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function groupPriceRange(group: MerchantOfferGroup) {
-  const prices = (group.employeeOffers ?? [])
-    .map(emp => parsePriceValue(emp.price))
-    .filter((value): value is number => value != null);
-
-  if (prices.length > 0) {
-    return normalizePriceRange(Math.min(...prices), Math.max(...prices));
-  }
-
-  return normalizePriceRange(null, null);
 }
 
 function formatPriceRangeHint(min?: number | null, max?: number | null) {

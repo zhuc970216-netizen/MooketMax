@@ -16,6 +16,7 @@ mjzd.rar
 *.apk
 *.jar
 *.aar
+release/
 build/
 target/
 .gradle/
@@ -53,6 +54,7 @@ temp_*.py
 query_stat*.py
 verify_sql.py
 sync_log.txt
+tsc-check.log
 brand_data.json
 cards_check.json
 factory_tier_data.sql

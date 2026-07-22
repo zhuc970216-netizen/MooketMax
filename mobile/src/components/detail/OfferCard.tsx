@@ -241,6 +241,7 @@ function EmployeeOfferCard({
               onViewOriginalText?.(
                 buildOriginalTextPayload({
                   text: offer.offerOriginalText,
+                  intent: 'offer',
                   country,
                   factoryNo,
                   productName,

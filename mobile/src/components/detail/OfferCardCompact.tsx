@@ -291,6 +291,7 @@ function EmployeeRow({
               onViewOriginalText?.(
                 buildOriginalTextPayload({
                   text: resolveOriginalText(offer),
+                  intent: plateType,
                   country,
                   factoryNo,
                   productName,

@@ -48,6 +48,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
   const [error, setError] = useState<string | null>(null);
   const [originalText, setOriginalText] = useState<OriginalTextPayload | null>(null);
   const [activeFilter, setActiveFilter] = useState<LocalFilterKey | null>(null);
+  const [filterPanelTop, setFilterPanelTop] = useState(0);
   const [famousOnly, setFamousOnly] = useState(false);
   const [regions, setRegions] = useState<Set<string>>(new Set());
   const [goodsTypes, setGoodsTypes] = useState<Set<string>>(new Set());
@@ -282,6 +283,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
                           if (key === 'product' || key === 'countryFactory') return;
                           setActiveFilter(key as LocalFilterKey);
                         }}
+                        onBottomLayout={setFilterPanelTop}
                       />
                     </View>
                   </View>
@@ -319,6 +321,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'region'}
+        topOffset={filterPanelTop}
         title="地区"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -334,6 +337,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
       </FilterPanelSheet>
       <FilterPanelSheet
         visible={activeFilter === 'goodsType'}
+        topOffset={filterPanelTop}
         title="货物类型"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -350,6 +354,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'feedingMethod'}
+        topOffset={filterPanelTop}
         title="饲养方式"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -366,6 +371,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'tag'}
+        topOffset={filterPanelTop}
         title="价格/标签"
         onClose={() => setActiveFilter(null)}
         onReset={() => {

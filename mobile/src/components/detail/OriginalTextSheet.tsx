@@ -23,6 +23,14 @@ export function OriginalTextSheet({
   const scrollRef = useRef<ScrollView | null>(null);
   const [segmentLayouts, setSegmentLayouts] = useState<Record<number, number>>({});
   const analysis = useMemo(() => analyzeOriginalText(text, keywords), [keywords, text]);
+  const activeSegmentIndexes = useMemo(() => {
+    const indexes = analysis.bestSegmentIndexes?.length
+      ? analysis.bestSegmentIndexes
+      : analysis.bestSegmentIndex >= 0
+        ? [analysis.bestSegmentIndex]
+        : [];
+    return new Set(indexes);
+  }, [analysis.bestSegmentIndex, analysis.bestSegmentIndexes]);
 
   useEffect(() => {
     if (!visible) {
@@ -67,7 +75,7 @@ export function OriginalTextSheet({
             {text ? (
               analysis.segments.length > 0 ? (
                 analysis.segments.map((segment, index) => {
-                  const active = index === analysis.bestSegmentIndex;
+                  const active = activeSegmentIndexes.has(index);
                   return (
                     <View
                       key={`${index}-${segment.slice(0, 12)}`}
