@@ -8,6 +8,8 @@ export type MerchantSearchSample = {
   productName?: string | null;
   country?: string | null;
   factoryNo?: string | null;
+  price?: number | null;
+  weight?: string | null;
   publishTime?: string | null;
 };
 
@@ -366,6 +368,8 @@ function addMerchantFeedItem(map: Map<string, MerchantSearchResult>, item: Offer
     productName: item.productName,
     country: item.country,
     factoryNo: item.factoryNo,
+    price: item.price,
+    weight: item.weight,
     publishTime: item.publishTime,
   };
   const sampleKey = `${sample.type}-${sample.productName ?? ''}-${sample.country ?? ''}-${sample.factoryNo ?? ''}`;

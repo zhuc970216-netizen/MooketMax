@@ -718,6 +718,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
           options={allTags}
           selected={tags}
           onToggle={value => setTags(prev => toggleSet(prev, value))}
+          groupSimilarTags
         />
       </FilterPanelSheet>
 

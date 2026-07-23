@@ -366,6 +366,27 @@ function MerchantResultCard({
               <Text style={styles.sampleFactory} numberOfLines={1}>
                 {buildFactoryText(sample)}
               </Text>
+              {sample.type === 'offer' ? (
+                <View style={styles.sampleOfferInfo}>
+                  <View style={styles.samplePriceLine}>
+                    {(() => {
+                      const price = formatLatestOfferPrice(sample.price);
+                      return (
+                        <>
+                          <Text style={[styles.samplePriceValue, !price.unit && styles.sampleNegotiateValue]}>
+                            {price.text}
+                          </Text>
+                          {price.unit ? <Text style={styles.samplePriceUnit}>{price.unit}</Text> : null}
+                        </>
+                      );
+                    })()}
+                  </View>
+                  <View style={styles.sampleWeightLine}>
+                    <Text style={styles.sampleWeightValue}>{formatWeightNumber(sample.weight)}</Text>
+                    <Text style={styles.sampleWeightUnit}>{formatWeightUnit(sample.weight)}</Text>
+                  </View>
+                </View>
+              ) : null}
             </View>
           ))}
         </View>
@@ -386,6 +407,41 @@ function buildFactoryText(sample: {country?: string | null; factoryNo?: string |
   return country || factoryNo || '国家厂号不限';
 }
 
+
+function formatLatestOfferPrice(value: unknown): {text: string; unit: string} {
+  const text = `${value ?? ''}`.trim();
+  if (!text || text === '-' || text === '--') {
+    return {text: '\u534F\u5546\u62A5\u4EF7', unit: ''};
+  }
+
+  const numeric = Number(text);
+  if (Number.isFinite(numeric) && numeric <= 0) {
+    return {text: '\u534F\u5546\u62A5\u4EF7', unit: ''};
+  }
+
+  return {text: `\u00A5${text}`, unit: '/kg'};
+}
+
+function formatWeightNumber(value: unknown): string {
+  const text = `${value ?? ''}`.trim();
+  if (!text) return '';
+  const match = text.match(/^([\d.]+)/);
+  if (match) {
+    const num = Number(match[1]);
+    if (Number.isFinite(num)) {
+      return Number.isInteger(num) ? `${num}` : num.toFixed(1).replace(/\.0$/, '');
+    }
+  }
+  return text;
+}
+
+function formatWeightUnit(value: unknown): string {
+  const text = `${value ?? ''}`.trim();
+  if (!text) return '';
+  const parts = text.split(/\s+/);
+  if (parts.length >= 2) return parts.slice(1).join(' ');
+  return 'kg';
+}
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -462,7 +518,7 @@ const styles = StyleSheet.create({
     width: '31.5%',
     flexGrow: 0,
     flexShrink: 0,
-    minHeight: 44,
+    minHeight: 58,
     paddingHorizontal: 7,
     paddingVertical: 6,
     borderRadius: 3,
@@ -507,6 +563,53 @@ const styles = StyleSheet.create({
     color: '#3C4947',
     fontSize: 11,
     lineHeight: 16,
+  },
+  sampleOfferInfo: {
+    marginTop: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
+  samplePriceLine: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  samplePriceValue: {
+    color: colors.price,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  sampleNegotiateValue: {
+    color: colors.primary,
+    fontSize: 10,
+    lineHeight: 16,
+  },
+  samplePriceUnit: {
+    color: colors.text,
+    fontSize: 10,
+    lineHeight: 18,
+    marginLeft: 1,
+  },
+  sampleWeightLine: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    flexShrink: 0,
+  },
+  sampleWeightValue: {
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  sampleWeightUnit: {
+    color: colors.textSecondary,
+    fontSize: 9,
+    lineHeight: 18,
+    marginLeft: 1,
   },
   footer: {
     marginTop: 6,

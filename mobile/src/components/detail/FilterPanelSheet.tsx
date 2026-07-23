@@ -80,36 +80,124 @@ export function MultiSelectChips({
   options,
   selected,
   onToggle,
+  groupSimilarTags = false,
 }: {
   options: string[];
   selected: Set<string>;
   onToggle: (option: string) => void;
+  groupSimilarTags?: boolean;
 }) {
   if (options.length === 0) {
     return <Text style={chipStyles.empty}>暂无可选项</Text>;
   }
+
+  if (groupSimilarTags) {
+    return (
+      <View style={chipStyles.groupedWrap}>
+        {groupSimilarTagOptions(options).map(group => (
+          <View key={group.key} style={chipStyles.groupRow}>
+            {group.options.map(option => (
+              <FilterOptionChip
+                key={option}
+                option={option}
+                active={selected.has(option)}
+                onToggle={onToggle}
+              />
+            ))}
+          </View>
+        ))}
+      </View>
+    );
+  }
+
   return (
     <View style={chipStyles.wrap}>
-      {options.map(option => {
-        const active = selected.has(option);
-        return (
-          <Pressable
-            key={option}
-            onPress={() => {
-              Keyboard.dismiss();
-              onToggle(option);
-            }}
-            style={[chipStyles.chip, active && chipStyles.chipActive]}>
-            <Text style={[chipStyles.text, active && chipStyles.textActive]} numberOfLines={1}>
-              {option}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {options.map(option => (
+        <FilterOptionChip
+          key={option}
+          option={option}
+          active={selected.has(option)}
+          onToggle={onToggle}
+        />
+      ))}
     </View>
   );
 }
 
+function FilterOptionChip({
+  option,
+  active,
+  onToggle,
+}: {
+  option: string;
+  active: boolean;
+  onToggle: (option: string) => void;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        Keyboard.dismiss();
+        onToggle(option);
+      }}
+      style={[chipStyles.chip, active && chipStyles.chipActive]}>
+      <Text style={[chipStyles.text, active && chipStyles.textActive]} numberOfLines={1}>
+        {option}
+      </Text>
+    </Pressable>
+  );
+}
+
+type SimilarTagGroupKey = 'date' | 'stock' | 'ticket' | 'shipment' | 'hold' | 'price' | 'other';
+
+const similarTagGroupOrder: SimilarTagGroupKey[] = [
+  'date',
+  'stock',
+  'ticket',
+  'shipment',
+  'hold',
+  'price',
+  'other',
+];
+
+function groupSimilarTagOptions(options: string[]) {
+  const groups = new Map<SimilarTagGroupKey, string[]>();
+  options.forEach(option => {
+    const text = option.trim();
+    if (!text) return;
+    const key = getSimilarTagGroupKey(text);
+    const current = groups.get(key) ?? [];
+    if (!current.includes(text)) {
+      current.push(text);
+    }
+    groups.set(key, current);
+  });
+
+  return similarTagGroupOrder
+    .map(key => ({key, options: groups.get(key) ?? []}))
+    .filter(group => group.options.length > 0);
+}
+
+function getSimilarTagGroupKey(text: string): SimilarTagGroupKey {
+  if (/\u65E5\u671F|\u65B0\u65E5|\u5927\u65E5|\u65B0\u65F6\u95F4|\u5927\u65F6\u95F4/.test(text)) {
+    return 'date';
+  }
+  if (/\u73B0\u8D27|\u65B0\u8D27|\u671F\u8D27|\u534A\u671F/.test(text)) {
+    return 'date';
+  }
+  if (/\u7968|\u5F00\u7968|\u4E13\u7968|\u4E00\u5BF9\u4E00|\u5F00\u8BC1|\u8BC1/.test(text)) {
+    return 'ticket';
+  }
+  if (/\u6574\u67DC|\u53EF\u62C6|\u62C6\u51FA|\u53EF\u51FA|\u6574\u51FA/.test(text)) {
+    return 'shipment';
+  }
+  if (/\u53EF\u653E|\u653E\u4E00|\u653E\u4E03|\u653E\u5341|\u653E\d|\u653E[0-9]/.test(text)) {
+    return 'hold';
+  }
+  if (/\u4E00\u53E3\u4EF7|\u7279\u4EF7|\u8BAE\u4EF7|\u62A5\u4EF7|\u4F18\u60E0/.test(text)) {
+    return 'price';
+  }
+  return 'other';
+}
 const styles = StyleSheet.create({
   modalRoot: {
     flex: 1,
@@ -187,6 +275,14 @@ const styles = StyleSheet.create({
 
 const chipStyles = StyleSheet.create({
   wrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  groupedWrap: {
+    gap: 8,
+  },
+  groupRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,

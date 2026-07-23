@@ -824,6 +824,7 @@ export function OfferFeedScreen({navigation, route}: Props) {
           options={filterOptions.tags ?? []}
           selected={new Set(filters.tag ? [filters.tag] : [])}
           onToggle={value => setFilters(prev => ({...prev, tag: prev.tag === value ? null : value}))}
+          groupSimilarTags
         />
       </FilterPanelSheet>
 

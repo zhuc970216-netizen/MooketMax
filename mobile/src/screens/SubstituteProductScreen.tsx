@@ -383,6 +383,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
           options={allTags.length ? allTags : ['大日龄', '可开证', '整柜', '一口价']}
           selected={tagFilters}
           onToggle={value => setTagFilters(prev => toggle(prev, value))}
+          groupSimilarTags
         />
       </FilterPanelSheet>
 

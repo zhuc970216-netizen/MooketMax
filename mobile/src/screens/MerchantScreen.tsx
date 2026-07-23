@@ -759,6 +759,7 @@ export function MerchantScreen({navigation, route}: Props) {
           options={allTags.length > 0 ? allTags : ['大日期', '可开票', '整柜', '一口价']}
           selected={tagFilters}
           onToggle={value => setTagFilters(prev => toggle(prev, value))}
+          groupSimilarTags
         />
       </FilterPanelSheet>
 
