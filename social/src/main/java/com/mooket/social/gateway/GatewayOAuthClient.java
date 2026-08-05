@@ -73,11 +73,10 @@ public class GatewayOAuthClient {
     public void sendSmsCode(String mobile, String deviceId) throws GatewayException {
         String encryptedMobile = encryptMobile(mobile);
         String url = UAC_BASE + "/auth/code/sms?mobile=" + URLEncoder.encode(encryptedMobile, StandardCharsets.UTF_8);
-        System.out.println("[GatewayOAuthClient] sendSmsCode URL: " + url);
         Map<String, Object> headers = buildHeaders(deviceId);
-        System.out.println("[GatewayOAuthClient] sendSmsCode headers: " + headers);
         Map<String, Object> response = doPost(url, headers, null);
-        System.out.println("[GatewayOAuthClient] sendSmsCode response: " + response);
+        System.out.println("[GatewayOAuthClient] sendSmsCode completed, code="
+                + response.getOrDefault("code", 0));
         if ((Integer) response.getOrDefault("code", 0) != 200) {
             throw new GatewayException("发送验证码失败: " + response.get("message"));
         }
@@ -187,8 +186,10 @@ public class GatewayOAuthClient {
                 response.append(line);
             }
             reader.close();
-            System.out.println("[GatewayOAuthClient] HTTP " + responseCode + " body: " + response);
-            return parseJson(response.toString());
+            Map<String, Object> parsedResponse = parseJson(response.toString());
+            System.out.println("[GatewayOAuthClient] HTTP " + responseCode + ", businessCode="
+                    + parsedResponse.getOrDefault("code", 0));
+            return parsedResponse;
         } catch (GatewayException e) {
             throw e;
         } catch (Exception e) {

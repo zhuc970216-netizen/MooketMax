@@ -8,6 +8,7 @@ mjzd.rar
 /.kiro/
 /.vscode/
 /user.keystore
+.mcp.json
 
 # === Shell scripts (debugging/temp) ===
 *.sh
@@ -32,6 +33,13 @@ Thumbs.db
 # === Social build ===
 social/target/
 social/*.log
+
+# === Local deployment secrets and data ===
+deploy/.env
+deploy/certificates/
+deploy/backups/
+*.dump
+*.backup
 
 # === Mobile build ===
 mobile/android/app/build/

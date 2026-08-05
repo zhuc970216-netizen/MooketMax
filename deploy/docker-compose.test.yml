@@ -1,0 +1,90 @@
+name: mooket-test
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: mooket_db
+      POSTGRES_USER: mooket_test
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ../sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mooket_test -d mooket_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in deploy/.env}
+    volumes:
+      - mysql_test_data:/var/lib/mysql
+      - ./mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -p\"$${MYSQL_ROOT_PASSWORD}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_test_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  social:
+    build:
+      context: ../social
+      dockerfile: docker/Dockerfile
+    environment:
+      MOOKET_PRIMARY_JDBC_URL: jdbc:postgresql://postgres:5432/mooket_db
+      MOOKET_PRIMARY_DB_USERNAME: mooket_test
+      MOOKET_PRIMARY_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deploy/.env}
+      MOOKET_MYSQL_JDBC_URL: jdbc:mysql://mysql:3306/mooket_source?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      MOOKET_MYSQL_DB_USERNAME: root
+      MOOKET_MYSQL_DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in deploy/.env}
+      MOOKET_ERP_JDBC_URL: jdbc:mysql://mysql:3306/mooket_erp?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      MOOKET_ERP_DB_USERNAME: root
+      MOOKET_ERP_DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in deploy/.env}
+      MOOKET_UAC_JDBC_URL: jdbc:mysql://mysql:3306/mooket_uac?useUnicode=true&characterEncoding=UTF-8&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+      MOOKET_UAC_DB_USERNAME: root
+      MOOKET_UAC_DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in deploy/.env}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      MOOKET_INTERNAL_SQL_ENABLED: "false"
+      MOOKET_INTERNAL_SQL_ALLOW_WRITES: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "127.0.0.1:8088:80"
+    volumes:
+      - ./nginx/test.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - social
+    restart: unless-stopped
+
+volumes:
+  postgres_test_data:
+  mysql_test_data:
+  redis_test_data:
