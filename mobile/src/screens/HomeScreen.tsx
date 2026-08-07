@@ -44,6 +44,7 @@ const HOME_INQUIRY_VISIBLE_COUNT = 3;
 const HOME_INQUIRY_ROW_HEIGHT = 32;
 const HOME_INQUIRY_SCROLL_MS_PER_ROW = 2400;
 const HOME_INQUIRY_SCROLL_ANIMATION_MS = 520;
+const SHOW_HOME_ENTRY_BLOCKS = false;
 
 // 18x18 主色「移除删除」icon
 const archiveDelIconXml = `<svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M12.6152 1.5C14.2125 1.50013 15.5098 2.80482 15.5176 4.39453V14.9629C15.5174 16.32 14.5499 16.8901 13.3652 16.2305L9.70508 14.1973C9.32267 13.9798 8.69274 13.9799 8.30273 14.1973L4.64258 16.2305C3.45775 16.8828 2.49042 16.3126 2.49023 14.9629V4.39453C2.49049 2.80482 3.78753 1.50012 5.38477 1.5H12.6152ZM7.125 7.4248C6.81756 7.4248 6.5626 7.67989 6.5625 7.9873C6.5625 8.2948 6.8175 8.5498 7.125 8.5498H10.875C11.1825 8.5498 11.4375 8.2948 11.4375 7.9873C11.4374 7.67989 11.1824 7.4248 10.875 7.4248H7.125Z" fill="#006A61"/></svg>`;
@@ -374,20 +375,24 @@ export function HomeScreen({navigation}: Props) {
               </ScrollView>
             </View>
           </View>
-          <TradingGuideSection
-            offerCount={stat?.totalOfferCount}
-            inquiries={visibleHomeInquiries}
-            tickerTranslateY={inquiryTickerY}
-            onInquiryPress={openInquiryFeed}
-            onOfferSearchPress={() => openSearch('offer')}
-            onMerchantSearchPress={() => openSearch('merchant')}
-          />
-          <FollowUpSection
-            intentCount={followCounts.intentCount}
-            recentCount={followCounts.recentCount}
-            onIntentPress={openIntentPlates}
-            onRecentPress={openRecentContacts}
-          />
+          {SHOW_HOME_ENTRY_BLOCKS ? (
+            <>
+              <TradingGuideSection
+                offerCount={stat?.totalOfferCount}
+                inquiries={visibleHomeInquiries}
+                tickerTranslateY={inquiryTickerY}
+                onInquiryPress={openInquiryFeed}
+                onOfferSearchPress={() => openSearch('offer')}
+                onMerchantSearchPress={() => openSearch('merchant')}
+              />
+              <FollowUpSection
+                intentCount={followCounts.intentCount}
+                recentCount={followCounts.recentCount}
+                onIntentPress={openIntentPlates}
+                onRecentPress={openRecentContacts}
+              />
+            </>
+          ) : null}
           </View>
         }
         renderSectionHeader={() => (

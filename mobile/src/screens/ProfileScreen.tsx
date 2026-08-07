@@ -22,6 +22,7 @@ import type {RootStackParamList} from '../navigation/routes';
 import {sessionStore} from '../store/sessionStore';
 import {colors} from '../theme/colors';
 import type {AppVersionInfo, UserProfile} from '../types/api';
+import {getPlateFollowCounts} from '../utils/plateFollowStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Profile'>;
 
@@ -34,17 +35,20 @@ export function ProfileScreen({navigation}: Props) {
   const [logoutDialog, setLogoutDialog] = useState(false);
   const [cancelDialog, setCancelDialog] = useState(false);
   const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [followCounts, setFollowCounts] = useState({intentCount: 0, recentCount: 0});
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [next, version] = await Promise.all([
+      const [next, version, counts] = await Promise.all([
         mooketApi.getUserProfile(),
         mooketApi.getAppVersion().catch(() => null),
+        getPlateFollowCounts().catch(() => ({intentCount: 0, recentCount: 0})),
       ]);
       setProfile(next);
       await setUser(next);
       setVersionInfo(version);
+      setFollowCounts(counts);
     } finally {
       setLoading(false);
     }
@@ -108,6 +112,20 @@ export function ProfileScreen({navigation}: Props) {
         contentContainerStyle={styles.content}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}>
         <UserCard profile={profile} onEdit={() => navigation.navigate('EditProfile')} />
+
+        <SectionCard>
+          <MenuRow
+            label="意向盘"
+            value={followCounts.intentCount > 0 ? String(followCounts.intentCount) : undefined}
+            onPress={() => navigation.navigate('PlateFollow', {initialTab: 'intent'})}
+          />
+          <MenuRow
+            label="最近沟通"
+            value={followCounts.recentCount > 0 ? String(followCounts.recentCount) : undefined}
+            onPress={() => navigation.navigate('PlateFollow', {initialTab: 'recent'})}
+            divider={false}
+          />
+        </SectionCard>
 
         <SectionCard>
           <MenuRow label="用户协议" onPress={() => Alert.alert('用户协议', '即将上线')} />
