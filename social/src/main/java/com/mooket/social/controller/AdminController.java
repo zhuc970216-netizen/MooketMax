@@ -1,8 +1,11 @@
 package com.mooket.social.controller;
 
 import com.mooket.social.common.ApiResponse;
+import com.mooket.social.mapper.BizOfferMapper;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 管理接口
@@ -12,25 +15,23 @@ import org.springframework.web.bind.annotation.*;
 public class AdminController {
 
     private final JdbcTemplate jdbcTemplate;
+    private final BizOfferMapper bizOfferMapper;
 
-    public AdminController(JdbcTemplate jdbcTemplate) {
+    public AdminController(JdbcTemplate jdbcTemplate, BizOfferMapper bizOfferMapper) {
         this.jdbcTemplate = jdbcTemplate;
+        this.bizOfferMapper = bizOfferMapper;
     }
 
     /**
-     * 创建索引（用于优化查询性能）
+     * 创建索引，用于优化查询性能
      */
     @PostMapping("/create-indexes")
     public ApiResponse<String> createIndexes() {
         try {
-            // 产品详情查询优化索引 - 覆盖主要查询条件
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_biz_offer_product_query " +
                     "ON biz_offer(product_id, category, offer_type, status, data_date)");
-
-            // 聚合查询索引 - 包含分组字段
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_biz_offer_group_agg " +
                     "ON biz_offer(product_id, category, offer_type, status, data_date, country, factory_no)");
-
             return ApiResponse.success("索引创建成功");
         } catch (Exception e) {
             return ApiResponse.error("创建索引失败: " + e.getMessage());
@@ -38,7 +39,7 @@ public class AdminController {
     }
 
     /**
-     * 回填 stat_brand_product 的 avg_price_yesterday 历史数据
+     * 回填 stat_brand_product 的昨日均价字段
      */
     @PostMapping("/fix-stat-brand-product-yesterday")
     public ApiResponse<String> fixStatBrandProductYesterday() {
@@ -67,6 +68,23 @@ public class AdminController {
             return ApiResponse.success("回填成功，影响行数: " + updated);
         } catch (Exception e) {
             return ApiResponse.error("回填失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 手动将 biz_offer 里不是今天的日期刷新为今天
+     */
+    @PostMapping("/refresh-biz-offer-dates")
+    public ApiResponse<String> refreshBizOfferDates() {
+        try {
+            int staleRows = bizOfferMapper.countRowsWithNonTodayDate();
+            if (staleRows <= 0) {
+                return ApiResponse.success("biz_offer 日期已是今天，无需刷新");
+            }
+            int updatedRows = bizOfferMapper.refreshAllOfferDatesToToday();
+            return ApiResponse.success("biz_offer 日期刷新完成，原待刷新 " + staleRows + " 条，实际更新 " + updatedRows + " 条");
+        } catch (Exception e) {
+            return ApiResponse.error("刷新 biz_offer 日期失败: " + e.getMessage());
         }
     }
 }
