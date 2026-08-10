@@ -11,6 +11,8 @@ type Props = {
   isInquiry?: boolean;
   todayOfferCount?: number | null;
   todayInquiryCount?: number | null;
+  totalOfferCount?: number | null;
+  totalInquiryCount?: number | null;
   priceMin?: number | null;
   priceMax?: number | null;
   merchantCount?: number | null;
@@ -33,13 +35,17 @@ export function BrandProductDashboard({
   isInquiry = false,
   todayOfferCount,
   todayInquiryCount,
+  totalOfferCount,
+  totalInquiryCount,
   priceMin,
   priceMax,
   merchantCount,
   factoryCount,
   onFeedPress,
 }: Props) {
-  const bigValue = isInquiry ? todayInquiryCount ?? 0 : todayOfferCount ?? 0;
+  const bigValue = isInquiry
+    ? totalInquiryCount ?? (todayInquiryCount ?? 0)
+    : totalOfferCount ?? (todayOfferCount ?? 0);
   const priceText = formatPrice(priceMin, priceMax);
 
   return (

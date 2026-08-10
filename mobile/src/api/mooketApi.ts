@@ -1,5 +1,6 @@
 import {CURRENT_APP_VERSION, CURRENT_APP_VERSION_CODE} from '../config/env';
 import {apiClient, unwrap} from './client';
+import {normalizeFactoryNo, normalizeFactoryNoOrNull} from '../utils/factoryNo';
 import type {
   AppVersionInfo,
   AuthResult,
@@ -328,11 +329,12 @@ export const mooketApi = {
     page = 1,
     pageSize = 20,
   ) {
+    const normalizedFactoryNo = normalizeFactoryNo(factoryNo);
     return withDetailCache(
-      `factoryDetail:${country}:${factoryNo}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
+      `factoryDetail:${country}:${normalizedFactoryNo}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
       () => unwrap<FactoryDetail>(
         apiClient.get('api/v1/factory/detail', {
-          params: {country, factoryNo, category, type, sortBy, page, pageSize},
+          params: {country, factoryNo: normalizedFactoryNo, category, type, sortBy, page, pageSize},
         }),
       ),
     );
@@ -367,22 +369,24 @@ export const mooketApi = {
     page = 1,
     pageSize = 20,
   ) {
+    const normalizedFactoryNo = normalizeFactoryNo(factoryNo);
     return withDetailCache(
-      `countryFactoryProductDetail:${country}:${factoryNo}:${productName}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
+      `countryFactoryProductDetail:${country}:${normalizedFactoryNo}:${productName}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
       () => unwrap<CountryFactoryProductDetail>(
         apiClient.get('api/v1/country-factory-product', {
-          params: {country, factoryNo, productName, category, type, sortBy, page, pageSize},
+          params: {country, factoryNo: normalizedFactoryNo, productName, category, type, sortBy, page, pageSize},
         }),
       ),
     );
   },
 
   getSubstituteProducts(country: string, factoryNo: string, productName: string, category: string) {
+    const normalizedFactoryNo = normalizeFactoryNo(factoryNo);
     return withDetailCache(
-      `substituteProducts:${country}:${factoryNo}:${productName}:${category}`,
+      `substituteProducts:${country}:${normalizedFactoryNo}:${productName}:${category}`,
       () => unwrap<SubstituteProduct>(
         apiClient.get('api/v1/substitute/products', {
-          params: {country, factoryNo, productName, category},
+          params: {country, factoryNo: normalizedFactoryNo, productName, category},
         }),
       ),
     );
@@ -398,11 +402,12 @@ export const mooketApi = {
     page = 1,
     pageSize = 10,
   ) {
+    const normalizedFactoryNo = normalizeFactoryNo(factoryNo);
     return withDetailCache(
-      `substituteProductDetail:${country}:${factoryNo}:${productName}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
+      `substituteProductDetail:${country}:${normalizedFactoryNo}:${productName}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
       () => unwrap<SubstituteProductDetail>(
         apiClient.get('api/v1/substitute/product/detail', {
-          params: {country, factoryNo, productName, category, type, sortBy, page, pageSize},
+          params: {country, factoryNo: normalizedFactoryNo, productName, category, type, sortBy, page, pageSize},
         }),
       ),
     );
@@ -416,11 +421,14 @@ export const mooketApi = {
     offerType = '报盘',
     days = 30,
   ) {
+    const normalizedFactoryNos = Array.from(
+      new Set(factoryNos.map(item => normalizeFactoryNoOrNull(item)).filter(Boolean)),
+    ) as string[];
     return withDetailCache(
-      `factoryPriceComparison:${country}:${factoryNos.join(',')}:${productName}:${category}:${offerType}:${days}`,
+      `factoryPriceComparison:${country}:${normalizedFactoryNos.join(',')}:${productName}:${category}:${offerType}:${days}`,
       () => unwrap<FactoryPriceComparison>(
         apiClient.get('api/v1/price-trend/compare', {
-          params: {country, factoryNos: factoryNos.join(','), productName, category, offerType, days},
+          params: {country, factoryNos: normalizedFactoryNos.join(','), productName, category, offerType, days},
         }),
       ),
     );

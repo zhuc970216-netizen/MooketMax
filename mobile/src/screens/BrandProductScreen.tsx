@@ -174,6 +174,8 @@ export function BrandProductScreen({navigation, route}: Props) {
                 isInquiry={tab === 'inquiry'}
                 todayOfferCount={data.todayOfferCount}
                 todayInquiryCount={data.todayInquiryCount}
+                totalOfferCount={data.totalOfferCount}
+                totalInquiryCount={data.totalInquiryCount}
                 priceMin={data.priceMin}
                 priceMax={data.priceMax}
                 merchantCount={getTabMerchantCount(data, tab)}

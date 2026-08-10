@@ -58,6 +58,7 @@ export type HomeCardItem = {
   exampleEntityKey?: string | null;
   rank?: number | null;
   todayOfferCount?: number | null;
+  searchWord?: string | null;
   historyId?: number | null;
   createTime?: string | null;
   productId?: number | null;
@@ -572,8 +573,10 @@ export type BrandProductDetailResult = {
   priceMax?: number | null;
   todayOfferCount: number;
   yesterdayOfferCount: number;
+  totalOfferCount?: number | null;
   todayInquiryCount: number;
   yesterdayInquiryCount: number;
+  totalInquiryCount?: number | null;
   summaries: BrandProductSummary[];
   totalCount: number;
   page?: number | null;

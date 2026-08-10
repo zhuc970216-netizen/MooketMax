@@ -30,7 +30,7 @@ export function ProductCard({card, onPress, onLongPress}: Props) {
       </View>
 
       <View style={styles.statBlock}>
-        <Text style={sharedStyles.smallLabel}>近2日报盘</Text>
+        <Text style={sharedStyles.smallLabel}>近2日报盘数</Text>
         <Text style={sharedStyles.bigStat}>{formatThousand(card.todayOfferCount)}</Text>
       </View>
 

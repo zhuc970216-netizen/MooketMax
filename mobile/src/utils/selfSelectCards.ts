@@ -1,6 +1,16 @@
 import {mooketApi} from '../api/mooketApi';
 import type {HomeCardItem, OfferFeedItem, SearchHistory} from '../types/api';
+import {normalizeFactoryNoOrNull} from './factoryNo';
 import {getHomeCardEntityKey} from './homeFallbackCards';
+
+const SEARCH_TYPE_PRODUCT = '\u4ea7\u54c1';
+const SEARCH_TYPE_COUNTRY = '\u56fd\u5bb6';
+const SEARCH_TYPE_BRAND = '\u54c1\u724c';
+const SEARCH_TYPE_MERCHANT = '\u5546\u5bb6';
+const SEARCH_TYPE_FACTORY = '\u56fd\u5bb6\u5382\u53f7';
+const SEARCH_TYPE_COUNTRY_PRODUCT = '\u56fd\u5bb6\u4ea7\u54c1';
+const SEARCH_TYPE_FACTORY_PRODUCT = '\u56fd\u5bb6\u5382\u53f7\u4ea7\u54c1';
+const SEARCH_TYPE_BRAND_PRODUCT = '\u54c1\u724c\u4ea7\u54c1';
 
 function parseLocalDateTime(value?: string | null) {
   if (!value) return 0;
@@ -58,9 +68,11 @@ export function mergeSelfSelectCardsWithHistories(
   const historyById = new Map(histories.map(history => [history.historyId, history]));
 
   cards.forEach(card => {
+    const history = card.historyId == null ? undefined : historyById.get(card.historyId);
+    const hydratedCard = hydrateSelfSelectCard(card, history);
     const normalizedCard = normalizeSelfSelectCard(
-      card,
-      card.historyId == null ? null : historyById.get(card.historyId)?.searchWord,
+      hydratedCard,
+      history?.searchWord ?? null,
     );
     collectCardKeys(normalizedCard).forEach(key => seen.add(key));
     result.push(normalizedCard);
@@ -71,7 +83,7 @@ export function mergeSelfSelectCardsWithHistories(
     const card = buildSelfSelectCardFromHistory(history);
     if (!card) return;
 
-    const normalizedCard = normalizeSelfSelectCard(card);
+    const normalizedCard = normalizeSelfSelectCard(card, history.searchWord ?? null);
     const keys = collectCardKeys(normalizedCard);
     if (keys.some(key => seen.has(key))) return;
 
@@ -82,6 +94,72 @@ export function mergeSelfSelectCardsWithHistories(
   return result;
 }
 
+function hydrateSelfSelectCard(
+  card: HomeCardItem,
+  history?: SearchHistory,
+): HomeCardItem {
+  if (card.cardType === 'factory') {
+    const factoryNo = normalizeFactoryNoOrNull(
+      card.factoryNo ??
+        history?.factoryNo ??
+        inferFactoryNo(
+          card.searchWord ?? history?.searchWord ?? null,
+          card.country ?? history?.country ?? null,
+        ),
+    );
+    return {
+      ...card,
+      searchWord: card.searchWord ?? history?.searchWord,
+      country: card.country ?? history?.country ?? null,
+      factoryNo: factoryNo || null,
+    };
+  }
+
+  if (card.cardType === 'countryProduct') {
+    const productName =
+      card.productName ??
+      history?.productName ??
+      inferCountryProductName(
+        card.searchWord ?? history?.searchWord ?? null,
+        card.country ?? history?.country ?? null,
+      );
+    return {
+      ...card,
+      searchWord: card.searchWord ?? history?.searchWord,
+      country: card.country ?? history?.country ?? null,
+      productName: productName || null,
+    };
+  }
+
+  if (card.cardType === 'factoryProduct') {
+    return normalizeSelfSelectCard(
+      {
+        ...card,
+        searchWord: card.searchWord ?? history?.searchWord,
+        country: card.country ?? history?.country ?? null,
+        factoryNo:
+          normalizeFactoryNoOrNull(card.factoryNo ?? history?.factoryNo ?? null) || null,
+        productName: card.productName ?? history?.productName ?? null,
+      } as HomeCardItem & {searchWord?: string | null},
+      history?.searchWord ?? null,
+    );
+  }
+
+  if (!history) return card;
+  if (card.cardType !== 'brandProduct') return card;
+  const productName = card.productName ?? history.productName ?? null;
+  const brandName =
+    card.brandName ??
+    (productName ? inferBrandName(history.searchWord, productName) : history.searchWord);
+  return {
+    ...card,
+    searchWord: card.searchWord ?? history.searchWord,
+    brandId: card.brandId ?? history.brandId ?? null,
+    brandName: brandName || null,
+    productName,
+  };
+}
+
 export async function enrichSelfSelectCards(
   category: string,
   cards: HomeCardItem[],
@@ -90,8 +168,14 @@ export async function enrichSelfSelectCards(
     cards.map(card =>
       needsMerchantOfferEnrichment(card)
         ? enrichMerchantSelfSelectCard(category, card).catch(() => card)
+        : needsFactoryEnrichment(card)
+          ? enrichFactorySelfSelectCard(category, card).catch(() => card)
         : needsFactoryProductEnrichment(card)
           ? enrichFactoryProductSelfSelectCard(category, card).catch(() => card)
+        : needsCountryProductEnrichment(card)
+          ? enrichCountryProductSelfSelectCard(category, card).catch(() => card)
+        : needsBrandProductEnrichment(card)
+          ? enrichBrandProductSelfSelectCard(category, card).catch(() => card)
         : Promise.resolve(card),
     ),
   );
@@ -114,7 +198,10 @@ function collectCardKeys(card: HomeCardItem) {
       addCardKey(keys, ['brand', card.brandName]);
       break;
     case 'merchant':
-      addCardKey(keys, ['merchant', card.merchantId == null ? card.merchantName : String(card.merchantId)]);
+      addCardKey(keys, [
+        'merchant',
+        card.merchantId == null ? card.merchantName : String(card.merchantId),
+      ]);
       addCardKey(keys, ['merchant-name', card.merchantName]);
       addCardKey(keys, ['merchant-name', card.merchantShortName]);
       break;
@@ -129,7 +216,9 @@ function collectCardKeys(card: HomeCardItem) {
       break;
     case 'brandProduct':
       addCardKey(keys, ['brandProduct', card.brandName, card.productName]);
-      if (card.brandId != null) addCardKey(keys, ['brandProductId', String(card.brandId), card.productName]);
+      if (card.brandId != null) {
+        addCardKey(keys, ['brandProductId', String(card.brandId), card.productName]);
+      }
       break;
     default:
       break;
@@ -147,10 +236,11 @@ function buildSelfSelectCardFromHistory(history: SearchHistory): HomeCardItem | 
   const base = {
     historyId: history.historyId,
     createTime: history.createTime,
+    searchWord: history.searchWord,
   };
 
   switch (searchType) {
-    case '产品': {
+    case SEARCH_TYPE_PRODUCT: {
       const productName = history.productName || history.searchWord;
       if (!productName) return null;
       return {
@@ -160,14 +250,14 @@ function buildSelfSelectCardFromHistory(history: SearchHistory): HomeCardItem | 
         productName,
       };
     }
-    case '国家':
+    case SEARCH_TYPE_COUNTRY:
       if (!history.country && !history.searchWord) return null;
       return {
         ...base,
         cardType: 'country',
         country: history.country || history.searchWord,
       };
-    case '品牌':
+    case SEARCH_TYPE_BRAND:
       if (!history.searchWord) return null;
       return {
         ...base,
@@ -175,7 +265,7 @@ function buildSelfSelectCardFromHistory(history: SearchHistory): HomeCardItem | 
         brandId: history.brandId ?? null,
         brandName: history.searchWord,
       };
-    case '商家':
+    case SEARCH_TYPE_MERCHANT:
       if (!history.searchWord && history.merchantId == null) return null;
       return {
         ...base,
@@ -184,33 +274,48 @@ function buildSelfSelectCardFromHistory(history: SearchHistory): HomeCardItem | 
         merchantName: history.searchWord || null,
         merchantShortName: history.searchWord || null,
       };
-    case '国家厂号':
-      if (!history.country || !history.factoryNo) return null;
+    case SEARCH_TYPE_FACTORY: {
+      const country = history.country?.trim() || null;
+      const factoryNo = normalizeFactoryNoOrNull(
+        history.factoryNo ?? inferFactoryNo(history.searchWord ?? null, country),
+      );
+      if (!country || !factoryNo) return null;
       return {
         ...base,
         cardType: 'factory',
-        country: history.country,
-        factoryNo: history.factoryNo,
+        country,
+        factoryNo,
       };
-    case '国家产品':
-      if (!history.country || !history.productName) return null;
+    }
+    case SEARCH_TYPE_COUNTRY_PRODUCT: {
+      const country = history.country?.trim() || null;
+      const productName =
+        history.productName?.trim() ||
+        inferCountryProductName(history.searchWord ?? null, country);
+      if (!country || !productName) return null;
       return {
         ...base,
         cardType: 'countryProduct',
-        country: history.country,
-        productName: history.productName,
+        country,
+        productName,
       };
-    case '国家厂号产品':
-      if (!history.country || !history.factoryNo || !history.productName) return null;
-      return normalizeSelfSelectCard({
-        ...base,
-        cardType: 'factoryProduct',
-        country: history.country,
-        factoryNo: history.factoryNo,
-        productName: history.productName,
-        searchWord: history.searchWord,
-      } as HomeCardItem & {searchWord?: string | null});
-    case '品牌产品': {
+    }
+    case SEARCH_TYPE_FACTORY_PRODUCT: {
+      const country = history.country?.trim() || null;
+      if (!country) return null;
+      return normalizeSelfSelectCard(
+        {
+          ...base,
+          cardType: 'factoryProduct',
+          country,
+          factoryNo: normalizeFactoryNoOrNull(history.factoryNo) ?? null,
+          productName: history.productName?.trim() || null,
+          searchWord: history.searchWord,
+        } as HomeCardItem & {searchWord?: string | null},
+        history.searchWord ?? null,
+      );
+    }
+    case SEARCH_TYPE_BRAND_PRODUCT: {
       if (!history.productName) return null;
       const brandName = inferBrandName(history.searchWord, history.productName);
       return {
@@ -226,22 +331,58 @@ function buildSelfSelectCardFromHistory(history: SearchHistory): HomeCardItem | 
   }
 }
 
-function normalizeSelfSelectCard(card: HomeCardItem, searchWordOverride?: string | null) {
+function normalizeSelfSelectCard(
+  card: HomeCardItem,
+  searchWordOverride?: string | null,
+) {
+  if (card.cardType === 'factory') {
+    const normalizedFactoryNo = normalizeFactoryNoOrNull(card.factoryNo);
+    if (normalizedFactoryNo && normalizedFactoryNo !== card.factoryNo) {
+      return {
+        ...card,
+        factoryNo: normalizedFactoryNo,
+      };
+    }
+    return card;
+  }
+
   if (card.cardType !== 'factoryProduct') return card;
 
+  const normalizedFactoryNo = normalizeFactoryNoOrNull(card.factoryNo);
   const country = card.country?.trim() || '';
   const searchWord = searchWordOverride?.trim() || getCardSearchWord(card);
   if (!country || !searchWord || !searchWord.startsWith(country)) {
+    if (normalizedFactoryNo && normalizedFactoryNo !== card.factoryNo) {
+      return {
+        ...card,
+        factoryNo: normalizedFactoryNo,
+      };
+    }
     return card;
   }
 
   const parsed = parseFactoryProductFromSearchWord(country, searchWord);
-  if (!parsed) return card;
+  if (!parsed) {
+    if (normalizedFactoryNo && normalizedFactoryNo !== card.factoryNo) {
+      return {
+        ...card,
+        factoryNo: normalizedFactoryNo,
+      };
+    }
+    return card;
+  }
 
   if (
-    normalizeText(parsed.factoryNo) === normalizeText(card.factoryNo ?? '') &&
+    normalizeText(parsed.factoryNo) ===
+      normalizeText(normalizedFactoryNo ?? card.factoryNo ?? '') &&
     normalizeText(parsed.productName) === normalizeText(card.productName ?? '')
   ) {
+    if (normalizedFactoryNo && normalizedFactoryNo !== card.factoryNo) {
+      return {
+        ...card,
+        factoryNo: normalizedFactoryNo,
+      };
+    }
     return card;
   }
 
@@ -258,6 +399,12 @@ function getCardSearchWord(card: HomeCardItem) {
   if (card.country && card.factoryNo && card.productName) {
     return `${card.country}${card.factoryNo}${card.productName}`;
   }
+  if (card.country && card.factoryNo) {
+    return `${card.country}${card.factoryNo}`;
+  }
+  if (card.country && card.productName) {
+    return `${card.country}${card.productName}`;
+  }
   return '';
 }
 
@@ -268,8 +415,8 @@ function parseFactoryProductFromSearchWord(country: string, searchWord: string) 
   const match = tail.match(/^([A-Za-z0-9-]+)(?=[\u3400-\u9fff])/);
   if (!match) return null;
 
-  const factoryNo = match[1].trim();
-  const productName = tail.slice(factoryNo.length).trim();
+  const factoryNo = normalizeFactoryNoOrNull(match[1].trim());
+  const productName = tail.slice(match[1].length).trim();
   if (!factoryNo || !productName) return null;
 
   return {factoryNo, productName};
@@ -301,15 +448,96 @@ function needsFactoryProductEnrichment(card: HomeCardItem) {
   );
 }
 
-async function enrichFactoryProductSelfSelectCard(
+function needsFactoryEnrichment(card: HomeCardItem) {
+  if (card.cardType !== 'factory') return false;
+  if (!card.country?.trim() || !card.factoryNo?.trim()) return false;
+  return !hasMeaningfulOfferCount(card.todayOfferCount) || !hasMeaningfulHotProducts(card.hotProducts);
+}
+
+function hasMeaningfulOfferCount(value?: number | null) {
+  return typeof value === 'number' && value > 0;
+}
+
+function hasMeaningfulHotProducts(items?: Record<string, unknown>[] | null) {
+  if (!items?.length) return false;
+  return items.some(item => {
+    const productName = typeof item.productName === 'string' ? item.productName.trim() : '';
+    const offerCount =
+      typeof item.offerCount === 'number'
+        ? item.offerCount
+        : typeof item.offerCount === 'string'
+          ? Number(item.offerCount)
+          : 0;
+    return Boolean(productName) && offerCount > 0;
+  });
+}
+
+function needsBrandProductEnrichment(card: HomeCardItem) {
+  if (card.cardType !== 'brandProduct') return false;
+  if (!card.productName?.trim()) return false;
+  return (
+    !card.brandName?.trim() ||
+    card.priceMin == null ||
+    card.priceMax == null ||
+    card.todayOfferCount == null ||
+    card.factoryCount == null
+  );
+}
+
+function needsCountryProductEnrichment(card: HomeCardItem) {
+  if (card.cardType !== 'countryProduct') return false;
+  if (!card.country?.trim() || !card.productName?.trim()) return false;
+  return (
+    card.priceMin == null ||
+    card.priceMax == null ||
+    card.todayOfferCount == null ||
+    card.factoryCount == null ||
+    !card.topFactories?.length
+  );
+}
+
+async function enrichBrandProductSelfSelectCard(
   category: string,
   card: HomeCardItem,
 ) {
-  if (!card.country || !card.factoryNo || !card.productName) return card;
+  if (!card.productName) return card;
+  const lookupBrandName =
+    card.brandName?.trim() ||
+    inferBrandName(card.searchWord ?? '', card.productName)?.trim();
+  if (!lookupBrandName) return card;
 
-  const detail = await mooketApi.getCountryFactoryProductDetail(
+  const detail = await mooketApi.getBrandProductDetail(
+    lookupBrandName,
+    card.productName,
+    category,
+    'offer',
+    'comprehensive',
+    1,
+    1,
+  );
+  const resolvedBrandName = detail.brandName
+    ? inferBrandName(detail.brandName, card.productName)
+    : lookupBrandName;
+
+  return {
+    ...card,
+    brandName: resolvedBrandName || lookupBrandName,
+    productName: card.productName || detail.summaries?.[0]?.productName || null,
+    priceMin: card.priceMin ?? detail.priceMin ?? null,
+    priceMax: card.priceMax ?? detail.priceMax ?? null,
+    todayOfferCount: card.todayOfferCount ?? detail.todayOfferCount ?? null,
+    factoryCount: card.factoryCount ?? detail.factoryCount ?? null,
+  };
+}
+
+async function enrichCountryProductSelfSelectCard(
+  category: string,
+  card: HomeCardItem,
+) {
+  if (!card.country || !card.productName) return card;
+
+  const detail = await mooketApi.getCountryProductDetail(
     card.country,
-    card.factoryNo,
     card.productName,
     category,
     'offer',
@@ -322,7 +550,154 @@ async function enrichFactoryProductSelfSelectCard(
     ...card,
     productId: card.productId ?? detail.productId ?? null,
     country: detail.country || card.country,
-    factoryNo: detail.factoryNo || card.factoryNo,
+    productName: detail.productName || card.productName,
+    priceMin: card.priceMin ?? detail.priceMin ?? null,
+    priceMax: card.priceMax ?? detail.priceMax ?? null,
+    priceChange: card.priceChange ?? detail.priceChange ?? null,
+    priceChangeRate: card.priceChangeRate ?? detail.priceChangeRate ?? null,
+    todayOfferCount: card.todayOfferCount ?? detail.offerCount ?? null,
+    inquiryCount: card.inquiryCount ?? detail.inquiryCount ?? null,
+    merchantCount: card.merchantCount ?? detail.merchantCount ?? null,
+    factoryCount: card.factoryCount ?? detail.totalCount ?? null,
+    topFactories: card.topFactories?.length
+      ? card.topFactories
+      : (detail.factories ?? []).slice(0, 3).map(item => ({
+          factoryNo: item.factoryNo ?? null,
+          priceMin: item.priceMin ?? null,
+          priceMax: item.priceMax ?? null,
+        })),
+    trendPoints: card.trendPoints?.length
+      ? card.trendPoints
+      : (detail.priceHistory7Days ?? [])
+          .filter(point => point.avgPrice != null)
+          .map(point => ({
+            date: point.date,
+            fullDate: point.fullDate,
+            avgPrice: point.avgPrice,
+            offerCount: point.offerCount,
+          })),
+  };
+}
+
+async function enrichFactorySelfSelectCard(
+  category: string,
+  card: HomeCardItem,
+) {
+  if (!card.country || !card.factoryNo) return card;
+
+  let resolvedCountry = card.country;
+  let resolvedFactoryNo = card.factoryNo;
+  let detail = await mooketApi.getFactoryDetail(
+    resolvedCountry,
+    resolvedFactoryNo,
+    category,
+    'offer',
+    'comprehensive',
+    1,
+    3,
+  );
+
+  if (isEmptyFactoryDetail(detail)) {
+    const resolved = await resolveFactoryFromKeyword(
+      category,
+      card.searchWord ?? `${card.country}${card.factoryNo}`,
+      card.country,
+      card.factoryNo,
+    );
+    if (
+      resolved &&
+      (normalizeText(resolved.country) !== normalizeText(resolvedCountry) ||
+        normalizeText(resolved.factoryNo) !== normalizeText(resolvedFactoryNo))
+    ) {
+      resolvedCountry = resolved.country;
+      resolvedFactoryNo = resolved.factoryNo;
+      detail = await mooketApi.getFactoryDetail(
+        resolvedCountry,
+        resolvedFactoryNo,
+        category,
+        'offer',
+        'comprehensive',
+        1,
+        3,
+      );
+    }
+  }
+
+  return {
+    ...card,
+    country: detail.country || resolvedCountry || card.country,
+    countryAlias: card.countryAlias ?? detail.countryAlias ?? null,
+    factoryNo:
+      normalizeFactoryNoOrNull(detail.factoryNo || resolvedFactoryNo || card.factoryNo) ||
+      card.factoryNo,
+    productCount: card.productCount ?? detail.productCount ?? null,
+    inquiryCount: card.inquiryCount ?? detail.inquiryCount ?? null,
+    todayOfferCount: hasMeaningfulOfferCount(card.todayOfferCount)
+      ? card.todayOfferCount
+      : detail.recentOfferCount ?? null,
+    hotProducts: hasMeaningfulHotProducts(card.hotProducts)
+      ? card.hotProducts
+      : (detail.products ?? []).slice(0, 3).map((item, index) => ({
+          productName: item.productName ?? null,
+          offerCount: item.offerCount ?? null,
+          rank: index + 1,
+        })),
+  };
+}
+
+async function enrichFactoryProductSelfSelectCard(
+  category: string,
+  card: HomeCardItem,
+) {
+  if (!card.country || !card.factoryNo || !card.productName) return card;
+
+  let resolvedCountry = card.country;
+  let resolvedFactoryNo = card.factoryNo;
+  let detail = await mooketApi.getCountryFactoryProductDetail(
+    resolvedCountry,
+    resolvedFactoryNo,
+    card.productName,
+    category,
+    'offer',
+    'comprehensive',
+    1,
+    6,
+  );
+
+  if (isEmptyFactoryProductDetail(detail)) {
+    const resolved = await resolveFactoryFromKeyword(
+      category,
+      card.searchWord ?? `${card.country}${card.factoryNo}${card.productName}`,
+      card.country,
+      card.factoryNo,
+    );
+    if (
+      resolved &&
+      (normalizeText(resolved.country) !== normalizeText(resolvedCountry) ||
+        normalizeText(resolved.factoryNo) !== normalizeText(resolvedFactoryNo))
+    ) {
+      resolvedCountry = resolved.country;
+      resolvedFactoryNo = resolved.factoryNo;
+      detail = await mooketApi.getCountryFactoryProductDetail(
+        resolvedCountry,
+        resolvedFactoryNo,
+        card.productName,
+        category,
+        'offer',
+        'comprehensive',
+        1,
+        6,
+      );
+    }
+  }
+
+  return {
+    ...card,
+    productId: card.productId ?? detail.productId ?? null,
+    country: detail.country || resolvedCountry || card.country,
+    factoryNo:
+      normalizeFactoryNoOrNull(detail.factoryNo || resolvedFactoryNo || card.factoryNo) ||
+      card.factoryNo,
     productName: detail.productName || card.productName,
     priceMin: card.priceMin ?? detail.priceMin ?? null,
     priceMax: card.priceMax ?? detail.priceMax ?? null,
@@ -381,7 +756,9 @@ async function enrichMerchantSelfSelectCard(
   card: HomeCardItem,
 ) {
   const byId = await loadMerchantOffersById(category, card);
-  const byKeyword = byId.items.length ? null : await loadMerchantOffersByKeyword(category, card);
+  const byKeyword = byId.items.length
+    ? null
+    : await loadMerchantOffersByKeyword(category, card);
   const page = byId.items.length ? byId : byKeyword;
   const items = page?.items ?? [];
   if (!items.length) return card;
@@ -461,6 +838,86 @@ function inferBrandName(searchWord: string, productName: string) {
 
   const withoutProduct = trimmed.replace(product, '').trim();
   return withoutProduct || trimmed;
+}
+
+function isEmptyFactoryDetail(detail: {
+  productCount?: number | null;
+  recentOfferCount?: number | null;
+  totalCount?: number | null;
+  products?: unknown[] | null;
+}) {
+  return (
+    (detail.productCount ?? 0) === 0 &&
+    (detail.recentOfferCount ?? 0) === 0 &&
+    (detail.totalCount ?? 0) === 0 &&
+    (detail.products?.length ?? 0) === 0
+  );
+}
+
+function isEmptyFactoryProductDetail(detail: {
+  offerCount?: number | null;
+  inquiryCount?: number | null;
+  merchantCount?: number | null;
+  totalCount?: number | null;
+  merchantOffers?: unknown[] | null;
+}) {
+  return (
+    (detail.offerCount ?? 0) === 0 &&
+    (detail.inquiryCount ?? 0) === 0 &&
+    (detail.merchantCount ?? 0) === 0 &&
+    (detail.totalCount ?? 0) === 0 &&
+    (detail.merchantOffers?.length ?? 0) === 0
+  );
+}
+
+async function resolveFactoryFromKeyword(
+  category: string,
+  keyword: string,
+  fallbackCountry: string,
+  fallbackFactoryNo: string,
+) {
+  const normalizedKeyword = keyword.trim().toLowerCase().replace(/\s+/g, '');
+  if (!normalizedKeyword) return null;
+
+  const suggestions = await mooketApi.getSearchSuggestions(category, keyword);
+  const matched = suggestions.find(item => {
+    if (item.matchType !== 'factory') return false;
+    const country = item.country?.trim() || fallbackCountry;
+    const factoryNo = normalizeFactoryNoOrNull(item.factoryNo) || fallbackFactoryNo;
+    if (!country || !factoryNo) return false;
+    return `${country}${factoryNo}`.toLowerCase() === normalizedKeyword;
+  });
+
+  if (!matched) return null;
+  const country = matched.country?.trim() || fallbackCountry;
+  const factoryNo = normalizeFactoryNoOrNull(matched.factoryNo) || fallbackFactoryNo;
+  if (!country || !factoryNo) return null;
+  return {country, factoryNo};
+}
+
+function inferCountryProductName(
+  searchWord?: string | null,
+  country?: string | null,
+) {
+  const raw = searchWord?.trim();
+  const countryValue = country?.trim();
+  if (!raw) return null;
+  if (!countryValue) return raw;
+  if (!raw.startsWith(countryValue)) return raw;
+  const productName = raw.slice(countryValue.length).trim();
+  return productName || null;
+}
+
+function inferFactoryNo(
+  searchWord?: string | null,
+  country?: string | null,
+) {
+  const raw = searchWord?.trim();
+  const countryValue = country?.trim();
+  if (!raw) return null;
+  const tail =
+    countryValue && raw.startsWith(countryValue) ? raw.slice(countryValue.length) : raw;
+  return normalizeFactoryNoOrNull(tail);
 }
 
 function normalizeText(value: string) {

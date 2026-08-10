@@ -1,5 +1,6 @@
 import {mooketApi} from '../api/mooketApi';
 import type {HomeCardItem, HotSearchItem} from '../types/api';
+import {normalizeFactoryNoOrNull} from './factoryNo';
 
 type Navigation = {
   navigate: (screen: string, params?: Record<string, unknown>) => void;
@@ -30,8 +31,9 @@ function prefetchMerchant(category: string, merchantId?: number | string | null)
 }
 
 function prefetchFactory(category: string, country?: string | null, factoryNo?: string | null) {
-  if (!country || !factoryNo) return;
-  fireAndForget(mooketApi.getFactoryDetail(country, factoryNo, category));
+  const normalizedFactoryNo = normalizeFactoryNoOrNull(factoryNo);
+  if (!country || !normalizedFactoryNo) return;
+  fireAndForget(mooketApi.getFactoryDetail(country, normalizedFactoryNo, category));
 }
 
 function prefetchCountryProduct(category: string, country?: string | null, productName?: string | null) {
@@ -45,8 +47,16 @@ function prefetchCountryFactoryProduct(
   factoryNo?: string | null,
   productName?: string | null,
 ) {
-  if (!country || !factoryNo || !productName) return;
-  fireAndForget(mooketApi.getCountryFactoryProductDetail(country, factoryNo, productName, category));
+  const normalizedFactoryNo = normalizeFactoryNoOrNull(factoryNo);
+  if (!country || !normalizedFactoryNo || !productName) return;
+  fireAndForget(
+    mooketApi.getCountryFactoryProductDetail(
+      country,
+      normalizedFactoryNo,
+      productName,
+      category,
+    ),
+  );
 }
 
 function prefetchBrandProduct(category: string, brandName?: string | null, productName?: string | null) {
@@ -87,12 +97,14 @@ export function openHomeCard(navigation: Navigation, category: string, card: Hom
       break;
     case 'factory':
       if (card.country && card.factoryNo) {
-        prefetchFactory(category, card.country, card.factoryNo);
+        const normalizedFactoryNo = normalizeFactoryNoOrNull(card.factoryNo);
+        if (!normalizedFactoryNo) break;
+        prefetchFactory(category, card.country, normalizedFactoryNo);
         navigation.navigate('Factory', {
           country: card.country,
-          factoryNo: card.factoryNo,
+          factoryNo: normalizedFactoryNo,
           category,
-          searchKeyword: `${card.country}${card.factoryNo}`,
+          searchKeyword: `${card.country}${normalizedFactoryNo}`,
         });
       }
       break;
@@ -109,13 +121,20 @@ export function openHomeCard(navigation: Navigation, category: string, card: Hom
       break;
     case 'factoryProduct':
       if (card.country && card.factoryNo && card.productName) {
-        prefetchCountryFactoryProduct(category, card.country, card.factoryNo, card.productName);
+        const normalizedFactoryNo = normalizeFactoryNoOrNull(card.factoryNo);
+        if (!normalizedFactoryNo) break;
+        prefetchCountryFactoryProduct(
+          category,
+          card.country,
+          normalizedFactoryNo,
+          card.productName,
+        );
         navigation.navigate('CountryFactoryProduct', {
           country: card.country,
-          factoryNo: card.factoryNo,
+          factoryNo: normalizedFactoryNo,
           productName: card.productName,
           category,
-          searchKeyword: `${card.country}${card.factoryNo}${card.productName}`,
+          searchKeyword: `${card.country}${normalizedFactoryNo}${card.productName}`,
         });
       }
       break;
