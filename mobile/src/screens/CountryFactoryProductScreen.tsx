@@ -483,6 +483,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
                 onDial={item.merchantPhone ?? undefined}
                 onViewOriginalText={handleViewOriginalText}
                 onMerchantPress={() => openMerchantHome(item)}
+                hideSummaryMeta
               />
             )}
             ItemSeparatorComponent={() => <View style={styles.itemDivider} />}

@@ -35,6 +35,7 @@ type Props = {
   onViewOriginalText?: (payload: OriginalTextPayload) => void;
   onMerchantPress?: () => void;
   defaultExpanded?: boolean;
+  hideSummaryMeta?: boolean;
 };
 
 function MerchantOfferGroupCardInner({
@@ -48,6 +49,7 @@ function MerchantOfferGroupCardInner({
   onViewOriginalText,
   onMerchantPress,
   defaultExpanded,
+  hideSummaryMeta,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   const merchantName = group.merchantName || `商家-${group.merchantId ?? ''}`;
@@ -121,17 +123,19 @@ function MerchantOfferGroupCardInner({
           </View>
         </View>
 
-        <View style={styles.tagRow}>
-          {firstLocation ? <OfferTagChip text={firstLocation} variant="location" /> : null}
-          {goodsTypes.slice(0, 2).map(text => renderFieldChip('goodsType', text))}
-          {feedings.slice(0, 2).map(text => renderFieldChip('feedingType', text))}
-          {fatRatios.slice(0, 2).map(text => renderFieldChip('fatRatio', text))}
-          {breeds.slice(0, 2).map(text => renderFieldChip('cattleBreed', text))}
-          {tags.slice(0, 4).map(tag => {
-            const {bg, fg} = colorForTag(tag);
-            return <OfferTagChip key={`tag-${tag}`} text={tag} variant="colored" bg={bg} fg={fg} />;
-          })}
-        </View>
+        {!hideSummaryMeta ? (
+          <View style={styles.tagRow}>
+            {firstLocation ? <OfferTagChip text={firstLocation} variant="location" /> : null}
+            {goodsTypes.slice(0, 2).map(text => renderFieldChip('goodsType', text))}
+            {feedings.slice(0, 2).map(text => renderFieldChip('feedingType', text))}
+            {fatRatios.slice(0, 2).map(text => renderFieldChip('fatRatio', text))}
+            {breeds.slice(0, 2).map(text => renderFieldChip('cattleBreed', text))}
+            {tags.slice(0, 4).map(tag => {
+              const {bg, fg} = colorForTag(tag);
+              return <OfferTagChip key={`tag-${tag}`} text={tag} variant="colored" bg={bg} fg={fg} />;
+            })}
+          </View>
+        ) : null}
       </Pressable>
 
       {expanded ? (
