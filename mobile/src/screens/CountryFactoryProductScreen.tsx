@@ -63,6 +63,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
   const {country, factoryNo, productName, category, searchKeyword: routeSearchKeyword, initialTab} = route.params;
   const searchKeyword = routeSearchKeyword ?? `${country}${factoryNo}${productName}`;
   const [data, setData] = useState<CountryFactoryProductDetail | null>(null);
+  const [hasSubstituteEntry, setHasSubstituteEntry] = useState<boolean | null>(null);
   const [tab, setTab] = useState<OfferTab>(initialTab ?? 'offer');
   const [sort, setSort] = useState<SortMode>({kind: 'comprehensive'});
   const [page, setPage] = useState(1);
@@ -182,6 +183,39 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
   useEffect(() => {
     loadFirst().catch(() => undefined);
   }, [loadFirst]);
+
+  useEffect(() => {
+    const lookupCountry = currentCountry?.trim();
+    const lookupFactoryNo = currentFactoryNo?.trim();
+    const lookupProductName = currentProductName?.trim();
+
+    if (!lookupCountry || !lookupFactoryNo || !lookupProductName) {
+      setHasSubstituteEntry(false);
+      return;
+    }
+
+    let cancelled = false;
+    setHasSubstituteEntry(data?.hasSubstitute ?? null);
+
+    mooketApi
+      .getSubstituteProducts(lookupCountry, lookupFactoryNo, lookupProductName, category)
+      .then(result => {
+        if (cancelled) {
+          return;
+        }
+        setHasSubstituteEntry((result.factories?.length ?? 0) > 0);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setHasSubstituteEntry(data?.hasSubstitute ?? false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [category, currentCountry, currentFactoryNo, currentProductName, data?.hasSubstitute]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !data) return;
@@ -372,6 +406,8 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
     setActiveFilter(key as LocalFilterKey);
   }
 
+  const showSubstituteEntry = hasSubstituteEntry ?? !!data?.hasSubstitute;
+
   return (
     <View style={styles.container}>
       <DetailTopBar
@@ -502,7 +538,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
             ListEmptyComponent={!loading ? <Text style={styles.empty}>暂无数据</Text> : null}
           />
 
-          {data.hasSubstitute ? (
+          {showSubstituteEntry ? (
             <Pressable
               style={styles.substituteFab}
               onPress={() =>
