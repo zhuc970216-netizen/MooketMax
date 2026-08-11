@@ -31,7 +31,13 @@ export function FeedStatLink({
           isLarge ? styles.largeValueRow : isStacked ? styles.stackedValueRow : styles.inlineValueRow,
           align === 'end' && styles.alignEnd,
         ]}>
-        <Text style={isLarge ? styles.largeValue : styles.inlineValue}>{displayValue}</Text>
+        <Text
+          style={isLarge ? styles.largeValue : styles.inlineValue}
+          numberOfLines={1}
+          adjustsFontSizeToFit={isLarge}
+          minimumFontScale={0.78}>
+          {displayValue}
+        </Text>
         {onPress && !isLarge ? (
           <View style={styles.linkHint}>
             <Text style={styles.linkText}>查看</Text>

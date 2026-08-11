@@ -156,7 +156,11 @@ export function BrandScreen({navigation, route}: Props) {
                 factoryCount={getTabFactoryCount(data, tab)}
                 productCount={getTabProductCount(data, tab)}
                 todayOfferCount={data.todayOfferCount}
+                yesterdayOfferCount={data.yesterdayOfferCount}
+                totalOfferCount={data.totalOfferCount}
                 todayInquiryCount={data.todayInquiryCount}
+                yesterdayInquiryCount={data.yesterdayInquiryCount}
+                totalInquiryCount={data.totalInquiryCount}
               />
               <View style={styles.gap} />
             </View>

@@ -3,6 +3,7 @@ import {StyleSheet, Text, View} from 'react-native';
 import {colors} from '../../theme/colors';
 import {fonts} from '../../theme/typography';
 import {formatCount} from '../../utils/format';
+import {getRecentBrandInquiryCount, getRecentBrandOfferCount} from '../../utils/brandStats';
 import {FeedStatLink} from './FeedStatLink';
 
 type Props = {
@@ -10,7 +11,9 @@ type Props = {
   productName: string;
   isInquiry?: boolean;
   todayOfferCount?: number | null;
+  yesterdayOfferCount?: number | null;
   todayInquiryCount?: number | null;
+  yesterdayInquiryCount?: number | null;
   totalOfferCount?: number | null;
   totalInquiryCount?: number | null;
   priceMin?: number | null;
@@ -34,7 +37,9 @@ export function BrandProductDashboard({
   productName,
   isInquiry = false,
   todayOfferCount,
+  yesterdayOfferCount,
   todayInquiryCount,
+  yesterdayInquiryCount,
   totalOfferCount,
   totalInquiryCount,
   priceMin,
@@ -44,8 +49,8 @@ export function BrandProductDashboard({
   onFeedPress,
 }: Props) {
   const bigValue = isInquiry
-    ? totalInquiryCount ?? (todayInquiryCount ?? 0)
-    : totalOfferCount ?? (todayOfferCount ?? 0);
+    ? getRecentBrandInquiryCount({todayInquiryCount, yesterdayInquiryCount, totalInquiryCount}) ?? 0
+    : getRecentBrandOfferCount({todayOfferCount, yesterdayOfferCount, totalOfferCount}) ?? 0;
   const priceText = formatPrice(priceMin, priceMax);
 
   return (

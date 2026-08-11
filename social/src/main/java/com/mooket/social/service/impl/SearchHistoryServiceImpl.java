@@ -459,7 +459,13 @@ public class SearchHistoryServiceImpl implements SearchHistoryService {
 
                 // 查今日报盘数（stat_brand 里没有时，通过 biz_offer 实时聚合）
                 BizOfferMapper.BrandStatByType brandStat = bizOfferMapper.countByBrandIdsAndType(allBrandIds, category, "报盘");
-                card.setTodayOfferCount(brandStat != null && brandStat.todayCount != null ? brandStat.todayCount.intValue() : null);
+                if (brandStat != null) {
+                    long todayCount = brandStat.todayCount != null ? brandStat.todayCount : 0L;
+                    long yesterdayCount = brandStat.yesterdayCount != null ? brandStat.yesterdayCount : 0L;
+                    card.setTodayOfferCount((int) (todayCount + yesterdayCount));
+                } else {
+                    card.setTodayOfferCount(null);
+                }
             }
         } catch (Exception e) {
             log.warn("获取品牌统计失败: brandId={}, error={}", brandId, e.getMessage());

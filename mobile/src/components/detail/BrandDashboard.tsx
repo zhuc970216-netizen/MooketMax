@@ -3,6 +3,7 @@ import {StyleSheet, Text, View} from 'react-native';
 import {colors} from '../../theme/colors';
 import {fonts} from '../../theme/typography';
 import {formatCount} from '../../utils/format';
+import {getRecentBrandInquiryCount, getRecentBrandOfferCount} from '../../utils/brandStats';
 import {FeedStatLink} from './FeedStatLink';
 
 type Props = {
@@ -11,7 +12,11 @@ type Props = {
   factoryCount?: number | null;
   productCount?: number | null;
   todayOfferCount?: number | null;
+  yesterdayOfferCount?: number | null;
+  totalOfferCount?: number | null;
   todayInquiryCount?: number | null;
+  yesterdayInquiryCount?: number | null;
+  totalInquiryCount?: number | null;
   onFeedPress?: () => void;
 };
 
@@ -26,10 +31,16 @@ export function BrandDashboard({
   factoryCount,
   productCount,
   todayOfferCount,
+  yesterdayOfferCount,
+  totalOfferCount,
   todayInquiryCount,
+  yesterdayInquiryCount,
+  totalInquiryCount,
   onFeedPress,
 }: Props) {
-  const bigValue = isInquiry ? todayInquiryCount ?? 0 : todayOfferCount ?? 0;
+  const bigValue = isInquiry
+    ? getRecentBrandInquiryCount({todayInquiryCount, yesterdayInquiryCount, totalInquiryCount}) ?? 0
+    : getRecentBrandOfferCount({todayOfferCount, yesterdayOfferCount, totalOfferCount}) ?? 0;
 
   return (
     <View style={styles.container}>

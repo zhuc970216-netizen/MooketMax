@@ -173,7 +173,9 @@ export function BrandProductScreen({navigation, route}: Props) {
                 productName={productName}
                 isInquiry={tab === 'inquiry'}
                 todayOfferCount={data.todayOfferCount}
+                yesterdayOfferCount={data.yesterdayOfferCount}
                 todayInquiryCount={data.todayInquiryCount}
+                yesterdayInquiryCount={data.yesterdayInquiryCount}
                 totalOfferCount={data.totalOfferCount}
                 totalInquiryCount={data.totalInquiryCount}
                 priceMin={data.priceMin}

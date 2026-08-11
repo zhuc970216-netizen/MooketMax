@@ -1,5 +1,6 @@
 import {mooketApi} from '../api/mooketApi';
 import type {HomeCardItem, OfferFeedItem, SearchHistory} from '../types/api';
+import {getRecentBrandOfferCount} from './brandStats';
 import {normalizeFactoryNoOrNull} from './factoryNo';
 import {getHomeCardEntityKey} from './homeFallbackCards';
 
@@ -174,6 +175,8 @@ export async function enrichSelfSelectCards(
           ? enrichFactoryProductSelfSelectCard(category, card).catch(() => card)
         : needsCountryProductEnrichment(card)
           ? enrichCountryProductSelfSelectCard(category, card).catch(() => card)
+        : needsBrandEnrichment(card)
+          ? enrichBrandSelfSelectCard(category, card).catch(() => card)
         : needsBrandProductEnrichment(card)
           ? enrichBrandProductSelfSelectCard(category, card).catch(() => card)
         : Promise.resolve(card),
@@ -484,6 +487,16 @@ function needsBrandProductEnrichment(card: HomeCardItem) {
   );
 }
 
+function needsBrandEnrichment(card: HomeCardItem) {
+  if (card.cardType !== 'brand') return false;
+  if (!card.brandName?.trim()) return false;
+  return (
+    !hasMeaningfulOfferCount(card.todayOfferCount) ||
+    card.productCount == null ||
+    card.factoryCount == null
+  );
+}
+
 function needsCountryProductEnrichment(card: HomeCardItem) {
   if (card.cardType !== 'countryProduct') return false;
   if (!card.country?.trim() || !card.productName?.trim()) return false;
@@ -494,6 +507,33 @@ function needsCountryProductEnrichment(card: HomeCardItem) {
     card.factoryCount == null ||
     !card.topFactories?.length
   );
+}
+
+async function enrichBrandSelfSelectCard(
+  category: string,
+  card: HomeCardItem,
+) {
+  if (!card.brandName) return card;
+
+  const detail = await mooketApi.getBrandDetail(
+    card.brandName,
+    category,
+    'offer',
+    'comprehensive',
+    1,
+    1000,
+  );
+  const recentOfferCount = getRecentBrandOfferCount(detail);
+
+  return {
+    ...card,
+    brandName: detail.brandName || card.brandName,
+    todayOfferCount: hasMeaningfulOfferCount(card.todayOfferCount)
+      ? card.todayOfferCount
+      : recentOfferCount,
+    productCount: card.productCount ?? detail.productCount ?? null,
+    factoryCount: card.factoryCount ?? detail.factoryCount ?? null,
+  };
 }
 
 async function enrichBrandProductSelfSelectCard(
@@ -525,7 +565,9 @@ async function enrichBrandProductSelfSelectCard(
     productName: card.productName || detail.summaries?.[0]?.productName || null,
     priceMin: card.priceMin ?? detail.priceMin ?? null,
     priceMax: card.priceMax ?? detail.priceMax ?? null,
-    todayOfferCount: card.todayOfferCount ?? detail.todayOfferCount ?? null,
+    todayOfferCount: hasMeaningfulOfferCount(card.todayOfferCount)
+      ? card.todayOfferCount
+      : getRecentBrandOfferCount(detail),
     factoryCount: card.factoryCount ?? detail.factoryCount ?? null,
   };
 }

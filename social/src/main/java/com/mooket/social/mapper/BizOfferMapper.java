@@ -657,8 +657,8 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
 
     /* 品牌统计 - 按 brandId + type 查近2日计数（今日+昨日） */
     @Select({"<script>SELECT " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS todayCount, " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS yesterdayCount " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS \"todayCount\", " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS \"yesterdayCount\" " +
             "FROM biz_offer " +
             "WHERE status = 'ACTIVE' " +
             "AND brand_id = #{brandId} " +
@@ -669,8 +669,8 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
 
     /* 品牌统计 - 按多个 brandId + type 查近2日计数（今日+昨日，支持一个品牌多个厂号） */
     @Select({"<script>SELECT " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS todayCount, " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS yesterdayCount " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS \"todayCount\", " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS \"yesterdayCount\" " +
             "FROM biz_offer " +
             "WHERE status = 'ACTIVE' " +
             "<if test='brandIds != null and brandIds.size() > 0'> AND brand_id IN <foreach collection='brandIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> </if> " +
@@ -688,8 +688,8 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
 
     /* 品牌统计 - 按 productName + type 查近2日计数（今日+昨日） */
     @Select({"<script>SELECT " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS todayCount, " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS yesterdayCount " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS \"todayCount\", " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS \"yesterdayCount\" " +
             "FROM biz_offer " +
             "WHERE status = 'ACTIVE' " +
             "AND product_name = #{productName} " +
@@ -747,8 +747,8 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
 
     /* 品牌统计 - 按多个 brandId + productName + type 查近2日计数 */
     @Select({"<script>SELECT " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS todayCount, " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS yesterdayCount " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS \"todayCount\", " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS \"yesterdayCount\" " +
             "FROM biz_offer " +
             "WHERE status = 'ACTIVE' " +
             "<if test='brandIds != null and brandIds.size() > 0'> AND brand_id IN <foreach collection='brandIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> </if> " +
@@ -762,8 +762,8 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
     int countBrandProductDetailByBrandIdsAndProductName(@Param("brandIds") List<Integer> brandIds, @Param("productName") String productName, @Param("category") String category, @Param("offerType") String offerType);
 
     @Select({"<script>SELECT " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS todayCount, " +
-            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS yesterdayCount " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE) AS \"todayCount\", " +
+            "COUNT(*) FILTER (WHERE publish_time::date = CURRENT_DATE - INTERVAL '1 day') AS \"yesterdayCount\" " +
             "FROM biz_offer " +
             "WHERE status = 'ACTIVE' " +
             "<if test='brandIds != null and brandIds.size() > 0'> AND brand_id IN <foreach collection='brandIds' item='id' open='(' separator=',' close=')'>#{id}</foreach> </if> " +
