@@ -750,13 +750,20 @@ async function enrichFactoryProductSelfSelectCard(
     merchantCount: card.merchantCount ?? detail.merchantCount ?? null,
     hotMerchants: card.hotMerchants?.length
       ? card.hotMerchants
-      : (detail.merchantOffers ?? []).slice(0, 3).map(group => {
+      : (detail.merchantOffers ?? []).map(group => {
           const priceRange = getEmployeeOfferPriceRange(group.employeeOffers ?? []);
+          const meta = getEmployeeOfferMeta(group.employeeOffers ?? []);
           return {
             merchantId: group.merchantId ?? null,
             merchantName: group.merchantName ?? null,
             priceMin: priceRange.min,
             priceMax: priceRange.max,
+            offerCount: group.offerCount ?? group.employeeOffers?.length ?? null,
+            feedingType: meta.feedingType,
+            goodsLocation: meta.goodsLocation,
+            region: meta.region,
+            tags: meta.tags,
+            employeeOffers: group.employeeOffers ?? [],
           };
         }),
     trendPoints: card.trendPoints?.length
@@ -780,6 +787,63 @@ function getEmployeeOfferPriceRange(
     .filter((price): price is number => price != null);
   if (!prices.length) return {min: null, max: null};
   return {min: Math.min(...prices), max: Math.max(...prices)};
+}
+
+function getEmployeeOfferMeta(
+  offers: Array<Record<string, unknown>>,
+) {
+  const feedingTypes = new Set<string>();
+  const goodsLocations = new Set<string>();
+  const regions = new Set<string>();
+  const tags = new Set<string>();
+
+  offers.forEach(offer => {
+    const feedingType = getOfferString(offer, ['feedingType', 'feeding_type', 'feeding']);
+    if (feedingType) {
+      splitOfferText(feedingType).forEach(item => feedingTypes.add(item));
+    }
+
+    const goodsLocation = getOfferString(offer, ['goodsLocation', 'goods_location', 'location']);
+    if (goodsLocation) {
+      splitOfferText(goodsLocation).forEach(item => goodsLocations.add(item));
+    }
+
+    const region = getOfferString(offer, ['region', 'area']);
+    if (region) {
+      splitOfferText(region).forEach(item => regions.add(item));
+    }
+
+    const tagText = getOfferString(offer, ['tags', 'tag']);
+    if (tagText) {
+      splitOfferText(tagText).forEach(item => tags.add(item));
+    }
+  });
+
+  return {
+    feedingType: Array.from(feedingTypes).join(' '),
+    goodsLocation: Array.from(goodsLocations).join(' '),
+    region: Array.from(regions).join(' '),
+    tags: Array.from(tags).join(' '),
+  };
+}
+
+function getOfferString(
+  raw: Record<string, unknown>,
+  keys: string[],
+) {
+  for (const key of keys) {
+    const value = raw[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return `${value}`;
+  }
+  return '';
+}
+
+function splitOfferText(value?: string | null) {
+  return value
+    ?.split(/[,\s，、/|]+/)
+    .map(item => item.trim())
+    .filter(Boolean) ?? [];
 }
 
 function parseOfferPrice(value?: string | number | null) {

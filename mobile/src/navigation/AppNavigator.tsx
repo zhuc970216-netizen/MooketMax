@@ -6,7 +6,7 @@ import {apiClient} from '../api/client';
 import {mooketApi} from '../api/mooketApi';
 import {UpdateModal} from '../components/common/UpdateModal';
 import {CURRENT_APP_VERSION_CODE, DEFAULT_CATEGORY} from '../config/env';
-import {HomeScreen} from '../screens/HomeScreen';
+import {HomeScreenV2} from '../screens/HomeScreenV2';
 import {LoginScreen} from '../screens/LoginScreen';
 import {sessionStore} from '../store/sessionStore';
 import {colors} from '../theme/colors';
@@ -130,7 +130,7 @@ export function AppNavigator() {
           }}>
           {token ? (
             <>
-              <Stack.Screen name="Home" component={HomeScreen} options={{headerShown: false}} />
+              <Stack.Screen name="Home" component={HomeScreenV2} options={{headerShown: false}} />
               <Stack.Screen
                 name="Search"
                 getComponent={getSearchScreen}

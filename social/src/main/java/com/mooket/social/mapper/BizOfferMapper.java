@@ -265,6 +265,76 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
         public String tags;
     }
 
+    public static class HomeHotSkuAgg {
+        public String country;
+        public String factoryNo;
+        public Integer productId;
+        public String productName;
+        public BigDecimal priceMin;
+        public BigDecimal priceMax;
+        public Integer offerCount;
+        public Integer merchantCount;
+        public LocalDateTime latestPublishTime;
+    }
+
+    public static class HomeHotSkuTrendPoint {
+        public LocalDate dataDate;
+        public BigDecimal avgPrice;
+        public Integer offerCount;
+    }
+
+    @Select({"<script>",
+            "SELECT",
+            "  o.country AS \"country\",",
+            "  o.factory_no AS \"factoryNo\",",
+            "  MIN(o.product_id) AS \"productId\",",
+            "  o.product_name AS \"productName\",",
+            "  MIN(CASE WHEN o.price &gt; 0 THEN o.price END) AS \"priceMin\",",
+            "  MAX(CASE WHEN o.price_max &gt; 0 THEN o.price_max WHEN o.price &gt; 0 THEN o.price END) AS \"priceMax\",",
+            "  COUNT(*) AS \"offerCount\",",
+            "  COUNT(DISTINCT COALESCE(o.merchant_id::text, NULLIF(o.contact_phone, ''), NULLIF(o.user_nickname, ''))) AS \"merchantCount\",",
+            "  MAX(o.publish_time) AS \"latestPublishTime\"",
+            "FROM biz_offer o",
+            "WHERE o.status = 'ACTIVE'",
+            "  AND o.offer_type = #{offerType}",
+            "  AND (CAST(#{category} AS varchar) IS NULL OR CAST(#{category} AS varchar) = '' OR o.category = #{category})",
+            "  AND o.country IS NOT NULL AND o.country != ''",
+            "  AND o.factory_no IS NOT NULL AND o.factory_no != ''",
+            "  AND o.product_name IS NOT NULL AND o.product_name != ''",
+            "GROUP BY o.country, o.factory_no, o.product_name",
+            "HAVING COUNT(*) &gt; 0 AND MIN(CASE WHEN o.price &gt; 0 THEN o.price END) IS NOT NULL",
+            "ORDER BY COUNT(*) DESC, COUNT(DISTINCT COALESCE(o.merchant_id::text, NULLIF(o.contact_phone, ''), NULLIF(o.user_nickname, ''))) DESC, MAX(o.publish_time) DESC",
+            "LIMIT #{limit}",
+            "</script>"})
+    List<HomeHotSkuAgg> selectHomeHotSkus(
+            @Param("category") String category,
+            @Param("offerType") String offerType,
+            @Param("limit") int limit);
+
+    @Select({"<script>",
+            "SELECT",
+            "  o.data_date AS \"dataDate\",",
+            "  AVG(o.price) AS \"avgPrice\",",
+            "  COUNT(*) AS \"offerCount\"",
+            "FROM biz_offer o",
+            "WHERE o.status = 'ACTIVE'",
+            "  AND o.offer_type = #{offerType}",
+            "  AND o.country = #{country}",
+            "  AND REPLACE(o.factory_no, ' ', '') = REPLACE(#{factoryNo}, ' ', '')",
+            "  AND o.product_name = #{productName}",
+            "  AND o.price IS NOT NULL AND o.price &gt; 0",
+            "  AND o.data_date &gt;= CURRENT_DATE - INTERVAL '6 day'",
+            "  AND (CAST(#{category} AS varchar) IS NULL OR CAST(#{category} AS varchar) = '' OR o.category = #{category})",
+            "GROUP BY o.data_date",
+            "ORDER BY o.data_date ASC",
+            "</script>"})
+    List<HomeHotSkuTrendPoint> selectHomeHotSkuTrend(
+            @Param("country") String country,
+            @Param("factoryNo") String factoryNo,
+            @Param("productName") String productName,
+            @Param("category") String category,
+            @Param("offerType") String offerType);
+
     @Select({"<script>",
             "SELECT",
             "  o.offer_id AS \"offerId\",",

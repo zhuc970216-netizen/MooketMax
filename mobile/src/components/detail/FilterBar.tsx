@@ -6,6 +6,7 @@ import {colors} from '../../theme/colors';
 export type FilterKey =
   | 'sort'
   | 'category'
+  | 'followedMerchant'
   | 'famousMerchant'
   | 'merchant'
   | 'countryFactory'

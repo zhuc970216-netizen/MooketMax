@@ -12,6 +12,7 @@ import type {
   FactoryDetail,
   FactoryPriceComparison,
   HomeCardsResponse,
+  HomeHotSku,
   HomeStatData,
   HotSearchItem,
   MerchantDetail,
@@ -87,6 +88,10 @@ export const mooketApi = {
 
   getHomeStatData(category: string) {
     return unwrap<HomeStatData>(apiClient.get('api/v1/home/stat', {params: {category}}));
+  },
+
+  getHomeHotOfferSkus(category: string, limit = 3) {
+    return unwrap<HomeHotSku[]>(apiClient.get('api/v1/home/hot-offer-skus', {params: {category, limit}}));
   },
 
   getHomeCards(category: string, tab = 0) {

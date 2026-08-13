@@ -41,7 +41,7 @@ export function getRecentBrandInquiryCount(source?: Partial<BrandStatsSource> | 
 }
 
 function sumSummaryCount(
-  summaries?: BrandProductSummary[] | null,
+  summaries: BrandProductSummary[] | null | undefined,
   key: 'offerCount' | 'inquiryCount',
 ) {
   if (!summaries?.length) return null;

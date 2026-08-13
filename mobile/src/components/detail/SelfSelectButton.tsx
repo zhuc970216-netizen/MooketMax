@@ -30,19 +30,20 @@ const archiveDelIconXml = `<svg viewBox="0 0 18 18" xmlns="http://www.w3.org/200
 const keySeparator = '\u001f';
 
 export function SelfSelectButton({ category, card, payload }: Props) {
+  const supported = isSupportedSelfSelectCard(card);
   const [selected, setSelected] = useState(false);
   const [historyId, setHistoryId] = useState<number | null>(null);
   const [pending, setPending] = useState(false);
   const candidateSignature = useMemo(
-    () => (card ? getSelfSelectCandidateKeys(card).join(keySeparator) : ''),
-    [card],
+    () => (supported && card ? getSelfSelectCandidateKeys(card).join(keySeparator) : ''),
+    [card, supported],
   );
   const payloadSignature = useMemo(
     () =>
       payload
         ? getSearchCandidateKey(payload.searchType, payload.searchWord)
         : '',
-    [payload?.searchType, payload?.searchWord],
+    [payload],
   );
   const entityName = payload?.searchWord.trim() || getSelfSelectEntityName(card);
 
@@ -80,6 +81,8 @@ export function SelfSelectButton({ category, card, payload }: Props) {
       };
     }, [candidateSignature, category, payloadSignature]),
   );
+
+  if (!supported) return null;
 
   const disabled = pending || !candidateSignature || (!selected && !payload);
 
@@ -215,6 +218,10 @@ async function findSelfSelectRecord(
   }
 
   return card ? { historyId: card.historyId ?? null } : null;
+}
+
+function isSupportedSelfSelectCard(card: HomeCardItem | null) {
+  return card?.cardType === 'factoryProduct' || card?.cardType === 'merchant';
 }
 
 export function toHistoryMerchantId(value: number | string | null | undefined) {

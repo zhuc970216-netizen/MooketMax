@@ -38,6 +38,24 @@ export type HomeStatData = {
   statTime: string;
 };
 
+export type HomeHotSkuTrendPoint = {
+  date?: string | null;
+  avgPrice?: number | null;
+  offerCount?: number | null;
+};
+
+export type HomeHotSku = {
+  country?: string | null;
+  factoryNo?: string | null;
+  productId?: number | null;
+  productName?: string | null;
+  priceMin?: number | null;
+  priceMax?: number | null;
+  offerCount?: number | null;
+  merchantCount?: number | null;
+  trendPoints?: HomeHotSkuTrendPoint[] | null;
+};
+
 export type SearchHistory = {
   historyId: number;
   searchWord: string;
@@ -77,7 +95,6 @@ export type HomeCardItem = {
   merchantId?: number | string | null;
   merchantName?: string | null;
   merchantShortName?: string | null;
-  brandName?: string | null;
   merchantTags?: string | null;
   latestOffers?: Record<string, unknown>[] | null;
   factoryNo?: string | null;

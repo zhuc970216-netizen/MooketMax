@@ -67,6 +67,11 @@ public interface HomeStatService {
     HomeStatData getHomeStatData(String category);
 
     /**
+     * 获取首页找货热门 SKU（按后端全量 ACTIVE 报盘聚合）
+     */
+    List<HomeHotSkuDTO> getHomeHotOfferSkus(String category, int limit);
+
+    /**
      * 获取首页卡片数据
      */
     HomeCardsResponseDTO getHomeCards(String category);
