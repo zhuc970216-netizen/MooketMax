@@ -40,6 +40,7 @@ public class OfferFeedServiceImpl implements OfferFeedService {
             Boolean quotedOnly,
             Boolean realNameOnly,
             Boolean verifiedOnly,
+            Boolean recentOnly,
             String sortBy,
             int page,
             int pageSize) {
@@ -48,6 +49,7 @@ public class OfferFeedServiceImpl implements OfferFeedService {
         int safePage = Math.max(page, 1);
         int safePageSize = Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE);
         int offset = (safePage - 1) * safePageSize;
+        boolean useRecentOnly = recentOnly == null || Boolean.TRUE.equals(recentOnly);
 
         int totalCount = offerMapper.countOfferFeed(
                 trimToNull(category),
@@ -64,7 +66,8 @@ public class OfferFeedServiceImpl implements OfferFeedService {
                 trimToNull(tag),
                 Boolean.TRUE.equals(quotedOnly),
                 Boolean.TRUE.equals(realNameOnly),
-                Boolean.TRUE.equals(verifiedOnly));
+                Boolean.TRUE.equals(verifiedOnly),
+                useRecentOnly);
 
         List<OfferFeedItemDTO> items = offerMapper.selectOfferFeed(
                         trimToNull(category),
@@ -82,6 +85,7 @@ public class OfferFeedServiceImpl implements OfferFeedService {
                         Boolean.TRUE.equals(quotedOnly),
                         Boolean.TRUE.equals(realNameOnly),
                         Boolean.TRUE.equals(verifiedOnly),
+                        useRecentOnly,
                         normalizedSort,
                         safePageSize,
                         offset)
@@ -103,7 +107,8 @@ public class OfferFeedServiceImpl implements OfferFeedService {
                         trimToNull(keyword),
                         merchantId,
                         trimToNull(brandName),
-                        trimToNull(productName))));
+                        trimToNull(productName),
+                        useRecentOnly)));
         return result;
     }
 
@@ -171,10 +176,17 @@ public class OfferFeedServiceImpl implements OfferFeedService {
     }
 
     private String normalizeSortBy(String sortBy) {
-        if ("price_asc".equals(sortBy) || "price_desc".equals(sortBy)) {
-            return sortBy;
+        String normalized = trimToNull(sortBy);
+        if (normalized == null) {
+            return "comprehensive";
         }
-        return "comprehensive";
+        return switch (normalized) {
+            case "price_asc", "priceAsc" -> "price_asc";
+            case "price_desc", "priceDesc" -> "price_desc";
+            case "publish_time", "publishTime" -> "publish_time";
+            case "field_completeness", "fieldCompleteness" -> "field_completeness";
+            default -> "comprehensive";
+        };
     }
 
     private String trimToNull(String value) {

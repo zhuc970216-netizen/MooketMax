@@ -22,22 +22,26 @@ type Props = {
   onPublisherPress: (item: OfferFeedItem) => void;
 };
 
-const LEFT_WIDTH = 158;
-const RIGHT_WIDTH = 105;
-const MIDDLE_WIDTH = 392;
+const FROZEN_PADDING_LEFT = 10;
+const FROZEN_PADDING_RIGHT = 6;
+const SKU_WIDTH = 184;
+const PRICE_WIDTH = 68;
+const LEFT_WIDTH = FROZEN_PADDING_LEFT + SKU_WIDTH + PRICE_WIDTH + FROZEN_PADDING_RIGHT;
+const TABLE_HEADER_BG = '#F7FAF9';
+const MIDDLE_WIDTH = 311;
 const columns = [
+  {key: 'location', title: '货物地', width: 50},
+  {key: 'tags', title: '标签', width: 91},
   {key: 'feeding', title: '饲养方式', width: 88},
   {key: 'weight', title: '数量', width: 82},
-  {key: 'location', title: '货物地', width: 108},
-  {key: 'tags', title: '标签', width: 114},
 ] as const;
 
 export function getOfferTableValues(item?: OfferFeedItem) {
   return [
+    formatLocation(clean(item?.goodsLocation) || clean(item?.region)),
+    clean(item?.tags) || '-',
     clean(item?.feedingType) || '-',
     clean(item?.weight) || '-',
-    clean(item?.goodsLocation) || clean(item?.region) || '-',
-    clean(item?.tags) || '-',
   ];
 }
 
@@ -46,7 +50,7 @@ export function formatOfferTablePrice(price?: number | null, priceMax?: number |
   if (!values.length) return '协商报价';
   const min = Math.min(...values);
   const max = Math.max(...values);
-  return min === max ? `¥${trimNumber(min)}/kg` : `¥${trimNumber(min)}-${trimNumber(max)}/kg`;
+  return min === max ? trimNumber(min) : `${trimNumber(min)}~${trimNumber(max)}`;
 }
 
 export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPress}: Props) {
@@ -90,11 +94,11 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
           <View key={group.key}>
             <TableRow
               rowKey={`group-${group.key}`}
-              expanded={expanded}
               leftTitle={group.productName}
-              leftMeta={[group.country, group.factoryNo, group.merchantName].filter(Boolean).join(' · ')}
+              leftSkuMeta={[group.country, group.factoryNo].filter(Boolean).join('')}
+              leftMeta={formatMerchantName(group.merchantName)}
               item={latest}
-              price={group.price}
+              price={formatDisplayPrice(group.price)}
               time={group.time}
               highlighted={expanded}
               onPress={() => onToggle(group.key)}
@@ -109,7 +113,7 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
                     rowKey={`publisher-${group.key}-${item.offerId ?? index}`}
                     publisher
                     leftTitle={item.userNickname?.trim() || '未知发布人'}
-                    leftMeta={(item.merchantShortName || item.merchantName || '暂未关联商家').trim()}
+                    leftMeta={formatMerchantName(item.merchantShortName || item.merchantName || '暂未关联商家')}
                     item={item}
                     price={formatOfferTablePrice(item.price, item.priceMax)}
                     time={formatTime(item.publishTime)}
@@ -131,11 +135,17 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
 function TableHeader({register, onSync, onBeginScroll}: SyncProps) {
   return (
     <View style={[styles.row, styles.header]}>
-      <View style={[styles.left, styles.headerCell]}><Text style={styles.headerText}>SKU · 商家</Text></View>
+      <View style={styles.headerLeftFrozen}>
+        <View style={[styles.leftSku, styles.headerColumn]}><Text style={[styles.headerText, styles.leftText]}>SKU · 商家</Text></View>
+        <View style={[styles.leftPrice, styles.headerColumn]}><Text style={[styles.headerText, styles.leftText]}>价格</Text></View>
+      </View>
       <MiddleScroll rowKey="header" register={register} onSync={onSync} onBeginScroll={onBeginScroll}>
-        {columns.map(column => <Text key={column.key} style={[styles.headerText, {width: column.width}]}>{column.title}</Text>)}
+        {columns.map(column => (
+          <View key={column.key} style={[styles.headerMiddleCell, {width: column.width}]}>
+            <Text style={[styles.headerText, styles.centerText]}>{column.title}</Text>
+          </View>
+        ))}
       </MiddleScroll>
-      <View style={[styles.right, styles.headerCell]}><Text style={[styles.headerText, styles.alignRight]}>价格</Text></View>
     </View>
   );
 }
@@ -146,12 +156,12 @@ type SyncProps = {
   onBeginScroll: (key: string) => void;
 };
 
-function TableRow({rowKey, publisher = false, expanded, highlighted = false, leftTitle, leftMeta, item, price, time, onPress, register, onSync, onBeginScroll}: SyncProps & {
+function TableRow({rowKey, publisher = false, highlighted = false, leftTitle, leftSkuMeta, leftMeta, item, price, time, onPress, register, onSync, onBeginScroll}: SyncProps & {
   rowKey: string;
   publisher?: boolean;
-  expanded?: boolean;
   highlighted?: boolean;
   leftTitle: string;
+  leftSkuMeta?: string;
   leftMeta: string;
   item?: OfferFeedItem;
   price: string;
@@ -161,13 +171,22 @@ function TableRow({rowKey, publisher = false, expanded, highlighted = false, lef
   const values = getOfferTableValues(item);
   return (
     <View style={[styles.row, highlighted && styles.highlightedRow, publisher && styles.publisherRow]}>
-      <Pressable onPress={onPress} style={({pressed}) => [styles.left, highlighted && styles.highlightedCell, pressed && styles.pressed]}>
-        <View style={styles.leftTitleLine}>
-          {!publisher ? <Text style={styles.chevron}>{expanded ? '⌃' : '⌄'}</Text> : <View style={styles.publisherDot} />}
-          {publisher ? <Text style={styles.publisherAvatarText}>{getAvatarText(leftTitle)}</Text> : null}
-          <Text style={[styles.leftTitle, publisher && styles.publisherTitle]} numberOfLines={1}>{leftTitle}</Text>
+      <Pressable onPress={onPress} style={({pressed}) => [styles.leftFrozen, highlighted && styles.highlightedCell, pressed && styles.pressed]}>
+        <View style={styles.leftSku}>
+          <View style={styles.leftTitleLine}>
+            {publisher ? <View style={styles.publisherDot} /> : null}
+            {publisher ? <Text style={styles.publisherAvatarText}>{getAvatarText(leftTitle)}</Text> : null}
+            <Text style={[styles.leftTitle, publisher && styles.publisherTitle]} numberOfLines={1}>
+              {leftTitle}
+              {!publisher && leftSkuMeta ? <Text style={styles.leftSkuMeta}> {leftSkuMeta}</Text> : null}
+            </Text>
+          </View>
+          {!publisher ? <Text style={styles.leftMeta} numberOfLines={1}>{leftMeta || '-'}</Text> : null}
         </View>
-        {!publisher ? <Text style={styles.leftMeta} numberOfLines={1}>{leftMeta || '-'}</Text> : null}
+        <View style={styles.leftPrice}>
+          <Text style={[styles.price, price === '协商报价' && styles.negotiate]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{price}</Text>
+          <Text style={styles.time}>{time || '-'}</Text>
+        </View>
       </Pressable>
       <MiddleScroll rowKey={rowKey} register={register} onSync={onSync} onBeginScroll={onBeginScroll}>
         {columns.map((column, index) => (
@@ -176,10 +195,6 @@ function TableRow({rowKey, publisher = false, expanded, highlighted = false, lef
           </View>
         ))}
       </MiddleScroll>
-      <Pressable onPress={onPress} style={({pressed}) => [styles.right, highlighted && styles.highlightedCell, pressed && styles.pressed]}>
-        <Text style={[styles.price, price === '协商报价' && styles.negotiate]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{price}</Text>
-        <Text style={styles.time}>{time || '-'}</Text>
-      </Pressable>
     </View>
   );
 }
@@ -207,6 +222,21 @@ function clean(value?: string | null) {
   return value?.trim() ?? '';
 }
 
+function formatMerchantName(value?: string | null) {
+  const text = clean(value);
+  if (!text || text === '暂未关联商家') return text;
+  return text.replace(/(?:国际供应链管理|供应链管理|物流管理|贸易|食品|进出口|管理)?有限公司$/u, '');
+}
+
+function formatDisplayPrice(value: string) {
+  return value.replace(/¥/g, '').replace(/\/kg/g, '').replace(/-/g, '~');
+}
+
+function formatLocation(value: string) {
+  const text = clean(value).replace(/城区$/u, '');
+  return text || '-';
+}
+
 function trimNumber(value: number) {
   return value.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
 }
@@ -225,24 +255,28 @@ function getAvatarText(value: string) {
 const styles = StyleSheet.create({
   table: {backgroundColor: '#FFFFFF'},
   row: {minHeight: 64, flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#DFE8E6', backgroundColor: '#FFFFFF'},
-  header: {minHeight: 34, backgroundColor: '#F7FAF9', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#DFE8E6'},
-  headerCell: {justifyContent: 'center'},
+  header: {minHeight: 34, alignItems: 'center', backgroundColor: TABLE_HEADER_BG, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#DFE8E6'},
+  headerLeftFrozen: {width: LEFT_WIDTH, height: 34, paddingLeft: FROZEN_PADDING_LEFT, paddingRight: FROZEN_PADDING_RIGHT, flexDirection: 'row', alignItems: 'center', backgroundColor: TABLE_HEADER_BG, zIndex: 2},
+  headerColumn: {alignItems: 'flex-start', justifyContent: 'center'},
+  headerMiddleCell: {height: 34, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6, backgroundColor: TABLE_HEADER_BG, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#EDF2F1'},
   headerText: {color: '#85928F', fontSize: 11, lineHeight: 15, fontWeight: '700'},
-  alignRight: {textAlign: 'right'},
-  left: {width: LEFT_WIDTH, paddingHorizontal: 10, justifyContent: 'center', backgroundColor: '#FFFFFF', zIndex: 2},
-  leftTitleLine: {flexDirection: 'row', alignItems: 'center', minWidth: 0, gap: 4},
-  chevron: {width: 13, color: colors.primary, fontSize: 13, fontWeight: '900'},
+  centerText: {textAlign: 'center'},
+  leftText: {textAlign: 'left'},
+  leftFrozen: {width: LEFT_WIDTH, paddingLeft: FROZEN_PADDING_LEFT, paddingRight: FROZEN_PADDING_RIGHT, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', zIndex: 2},
+  leftSku: {width: SKU_WIDTH, minWidth: 0, justifyContent: 'center'},
+  leftPrice: {width: PRICE_WIDTH, minWidth: 0, alignItems: 'flex-start', justifyContent: 'center'},
+  leftTitleLine: {flexDirection: 'row', alignItems: 'center', minWidth: 0, gap: 2},
   publisherDot: {width: 24, height: 24, marginRight: -22, borderRadius: 12, backgroundColor: colors.primary},
   publisherAvatarText: {width: 24, color: '#FFFFFF', fontSize: 12, lineHeight: 16, fontWeight: '900', textAlign: 'center', zIndex: 3},
-  leftTitle: {flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: '800'},
+  leftTitle: {flexShrink: 1, maxWidth: 180, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: '800'},
+  leftSkuMeta: {color: colors.text, fontSize: 13, lineHeight: 17, fontWeight: '700'},
   publisherTitle: {fontSize: 14},
-  leftMeta: {marginTop: 3, color: colors.textMuted, fontSize: 10, lineHeight: 14},
+  leftMeta: {marginTop: 4, color: colors.textMuted, fontSize: 12, lineHeight: 17},
   middleViewport: {flex: 1, minWidth: 0, backgroundColor: '#FFFFFF'},
   middleContent: {flexDirection: 'row', alignItems: 'stretch'},
   middleCell: {paddingHorizontal: 8, justifyContent: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#EDF2F1'},
   middleText: {color: colors.textSecondary, fontSize: 12, lineHeight: 17},
-  right: {width: RIGHT_WIDTH, paddingHorizontal: 9, alignItems: 'flex-end', justifyContent: 'center', backgroundColor: '#FFFFFF', zIndex: 2, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#DCE6E3'},
-  price: {width: '100%', color: colors.price, fontSize: 14, lineHeight: 19, fontWeight: '800', textAlign: 'right'},
+  price: {width: '100%', color: colors.price, fontSize: 14, lineHeight: 19, fontWeight: '800', textAlign: 'left'},
   negotiate: {color: colors.primary, fontSize: 13},
   time: {marginTop: 3, color: colors.textMuted, fontSize: 10, lineHeight: 14},
   highlightedRow: {backgroundColor: '#F3FAF8'},

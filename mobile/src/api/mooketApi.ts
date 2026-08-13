@@ -126,6 +126,7 @@ export const mooketApi = {
     quotedOnly?: boolean;
     realNameOnly?: boolean;
     verifiedOnly?: boolean;
+    recentOnly?: boolean;
     sortBy?: string;
     page?: number;
     pageSize?: number;

@@ -367,7 +367,7 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
             "LEFT JOIN dict_merchant m ON o.merchant_id = m.merchant_id",
             "LEFT JOIN dict_brand b ON o.brand_id = b.brand_id",
             "WHERE o.status = 'ACTIVE'",
-            "  AND o.publish_time::date &gt;= CURRENT_DATE - INTERVAL '1 day'",
+            "  <if test='recentOnly != null and recentOnly'>AND o.publish_time::date &gt;= CURRENT_DATE - INTERVAL '1 day'</if>",
             "  AND (CAST(#{category} AS varchar) IS NULL OR CAST(#{category} AS varchar) = '' OR o.category = #{category})",
             "  AND (CAST(#{offerType} AS varchar) IS NULL OR CAST(#{offerType} AS varchar) = '' OR o.offer_type = #{offerType})",
             "  <if test='merchantId != null'>AND o.merchant_id = #{merchantId}</if>",
@@ -392,6 +392,19 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
             "<choose>",
             "  <when test='sortBy == \"price_asc\"'>ORDER BY CASE WHEN o.price IS NULL OR o.price &lt;= 0 THEN 1 ELSE 0 END, o.price ASC, o.publish_time DESC, o.offer_id DESC</when>",
             "  <when test='sortBy == \"price_desc\"'>ORDER BY CASE WHEN o.price IS NULL OR o.price &lt;= 0 THEN 1 ELSE 0 END, o.price DESC, o.publish_time DESC, o.offer_id DESC</when>",
+            "  <when test='sortBy == \"publish_time\"'>ORDER BY o.publish_time DESC, o.offer_id DESC</when>",
+            "  <when test='sortBy == \"field_completeness\"'>ORDER BY",
+            "    (CASE WHEN NULLIF(BTRIM(o.product_name), '') IS NULL THEN 0 ELSE 1 END",
+            "     + CASE WHEN NULLIF(BTRIM(o.country), '') IS NULL THEN 0 ELSE 1 END",
+            "     + CASE WHEN NULLIF(BTRIM(o.factory_no), '') IS NULL THEN 0 ELSE 1 END",
+            "     + CASE WHEN (o.price IS NULL OR o.price &lt;= 0) AND (o.price_max IS NULL OR o.price_max &lt;= 0) THEN 0 ELSE 1 END",
+            "     + CASE WHEN COALESCE(o.merchant_id::text, NULLIF(BTRIM(m.merchant_short_name), ''), NULLIF(BTRIM(m.merchant_name), ''), NULLIF(BTRIM(o.user_nickname), '')) IS NULL THEN 0 ELSE 1 END",
+            "     + CASE WHEN NULLIF(BTRIM(o.goods_location), '') IS NULL THEN 0 ELSE 1 END",
+            "     + CASE WHEN NULLIF(BTRIM(o.tags), '') IS NULL THEN 0 ELSE 1 END",
+            "     + CASE WHEN NULLIF(BTRIM(o.feeding_type), '') IS NULL THEN 0 ELSE 1 END",
+            "     + CASE WHEN NULLIF(BTRIM(o.weight), '') IS NULL THEN 0 ELSE 1 END) DESC,",
+            "    o.publish_time DESC,",
+            "    o.offer_id DESC</when>",
             "  <otherwise>ORDER BY o.publish_time DESC, o.offer_id DESC</otherwise>",
             "</choose>",
             "LIMIT #{limit} OFFSET #{offset}",
@@ -412,6 +425,7 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
             @Param("quotedOnly") Boolean quotedOnly,
             @Param("realNameOnly") Boolean realNameOnly,
             @Param("verifiedOnly") Boolean verifiedOnly,
+            @Param("recentOnly") Boolean recentOnly,
             @Param("sortBy") String sortBy,
             @Param("limit") int limit,
             @Param("offset") int offset);
@@ -422,7 +436,7 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
             "LEFT JOIN dict_merchant m ON o.merchant_id = m.merchant_id",
             "LEFT JOIN dict_brand b ON o.brand_id = b.brand_id",
             "WHERE o.status = 'ACTIVE'",
-            "  AND o.publish_time::date &gt;= CURRENT_DATE - INTERVAL '1 day'",
+            "  <if test='recentOnly != null and recentOnly'>AND o.publish_time::date &gt;= CURRENT_DATE - INTERVAL '1 day'</if>",
             "  AND (CAST(#{category} AS varchar) IS NULL OR CAST(#{category} AS varchar) = '' OR o.category = #{category})",
             "  AND (CAST(#{offerType} AS varchar) IS NULL OR CAST(#{offerType} AS varchar) = '' OR o.offer_type = #{offerType})",
             "  <if test='merchantId != null'>AND o.merchant_id = #{merchantId}</if>",
@@ -460,7 +474,8 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
             @Param("tag") String tag,
             @Param("quotedOnly") Boolean quotedOnly,
             @Param("realNameOnly") Boolean realNameOnly,
-            @Param("verifiedOnly") Boolean verifiedOnly);
+            @Param("verifiedOnly") Boolean verifiedOnly,
+            @Param("recentOnly") Boolean recentOnly);
 
     @Select({"<script>",
             "SELECT o.country AS \"country\",",
@@ -473,7 +488,7 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
             "LEFT JOIN dict_merchant m ON o.merchant_id = m.merchant_id",
             "LEFT JOIN dict_brand b ON o.brand_id = b.brand_id",
             "WHERE o.status = 'ACTIVE'",
-            "  AND o.publish_time::date &gt;= CURRENT_DATE - INTERVAL '1 day'",
+            "  <if test='recentOnly != null and recentOnly'>AND o.publish_time::date &gt;= CURRENT_DATE - INTERVAL '1 day'</if>",
             "  AND (CAST(#{category} AS varchar) IS NULL OR CAST(#{category} AS varchar) = '' OR o.category = #{category})",
             "  AND (CAST(#{offerType} AS varchar) IS NULL OR CAST(#{offerType} AS varchar) = '' OR o.offer_type = #{offerType})",
             "  <if test='merchantId != null'>AND o.merchant_id = #{merchantId}</if>",
@@ -495,7 +510,8 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
             @Param("keyword") String keyword,
             @Param("merchantId") Long merchantId,
             @Param("brandName") String brandName,
-            @Param("productName") String productName);
+            @Param("productName") String productName,
+            @Param("recentOnly") Boolean recentOnly);
 
     @Select({"SELECT * FROM biz_offer WHERE merchant_id = #{merchantId} AND status = 'ACTIVE' AND publish_time::date >= CURRENT_DATE - INTERVAL '1 day' ORDER BY publish_time DESC"})
     List<BizOffer> selectByMerchantId(@Param("merchantId") Long merchantId);

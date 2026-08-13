@@ -296,9 +296,9 @@ function mergeRecommendation(
 function toSkuIdentity(
   value?: Pick<HomeHotSku, 'country' | 'factoryNo' | 'productName'> | null,
 ): SkuIdentity | null {
-  const country = value.country?.trim();
-  const factoryNo = normalizeFactoryNoOrNull(value.factoryNo);
-  const productName = value.productName?.trim();
+  const country = value?.country?.trim();
+  const factoryNo = normalizeFactoryNoOrNull(value?.factoryNo);
+  const productName = value?.productName?.trim();
   if (!country || !factoryNo || !productName) {
     return null;
   }

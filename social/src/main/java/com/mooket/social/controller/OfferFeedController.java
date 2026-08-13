@@ -35,6 +35,7 @@ public class OfferFeedController {
             @RequestParam(value = "quotedOnly", required = false) Boolean quotedOnly,
             @RequestParam(value = "realNameOnly", required = false) Boolean realNameOnly,
             @RequestParam(value = "verifiedOnly", required = false) Boolean verifiedOnly,
+            @RequestParam(value = "recentOnly", defaultValue = "true") Boolean recentOnly,
             @RequestParam(value = "sortBy", defaultValue = "comprehensive") String sortBy,
             @RequestParam(value = "page", defaultValue = "1") int page,
             @RequestParam(value = "pageSize", defaultValue = "20") int pageSize) {
@@ -55,6 +56,7 @@ public class OfferFeedController {
                     quotedOnly,
                     realNameOnly,
                     verifiedOnly,
+                    recentOnly,
                     sortBy,
                     page,
                     pageSize));

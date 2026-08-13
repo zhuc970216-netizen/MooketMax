@@ -13,21 +13,21 @@ describe('OfferFrozenTable formatters', () => {
         region: '华东',
         tags: '现货',
       } as never),
-    ).toEqual(['草饲', '20吨', '上海港', '现货']);
+    ).toEqual(['上海港', '现货', '草饲', '20吨']);
   });
 
   it('falls back to region and uses dashes for missing fields', () => {
     expect(getOfferTableValues({region: '华南'} as never)).toEqual([
-      '-',
-      '-',
       '华南',
+      '-',
+      '-',
       '-',
     ]);
   });
 
   it('formats single prices, ranges, and negotiated offers', () => {
-    expect(formatOfferTablePrice(54.5, 54.5)).toBe('¥54.5/kg');
-    expect(formatOfferTablePrice(54.5, 54.9)).toBe('¥54.5-54.9/kg');
+    expect(formatOfferTablePrice(54.5, 54.5)).toBe('54.5');
+    expect(formatOfferTablePrice(54.5, 54.9)).toBe('54.5~54.9');
     expect(formatOfferTablePrice()).toBe('协商报价');
   });
 });

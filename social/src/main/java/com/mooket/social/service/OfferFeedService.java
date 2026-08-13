@@ -19,6 +19,7 @@ public interface OfferFeedService {
             Boolean quotedOnly,
             Boolean realNameOnly,
             Boolean verifiedOnly,
+            Boolean recentOnly,
             String sortBy,
             int page,
             int pageSize);
