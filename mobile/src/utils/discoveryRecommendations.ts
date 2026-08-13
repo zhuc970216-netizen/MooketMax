@@ -28,14 +28,14 @@ export type DiscoveryRecommendation = {
 };
 
 export type SubstituteRecommendationInput = {
-  selected: HomeCardItem;
-  substitute: SubstituteProduct;
+  selected?: HomeCardItem | null;
+  substitute?: SubstituteProduct | null;
 };
 
 export type BuildDiscoveryRecommendationsInput = {
-  hotSkus: HomeHotSku[];
-  recentSelfSelects: HomeCardItem[];
-  substitutes?: SubstituteRecommendationInput[];
+  hotSkus?: Array<HomeHotSku | null | undefined> | null;
+  recentSelfSelects?: Array<HomeCardItem | null | undefined> | null;
+  substitutes?: Array<SubstituteRecommendationInput | null | undefined> | null;
   limit?: number;
 };
 
@@ -60,8 +60,15 @@ export function buildDiscoveryRecommendations({
   substitutes = [],
   limit,
 }: BuildDiscoveryRecommendationsInput): DiscoveryRecommendation[] {
+  const safeHotSkus = toArray(hotSkus).filter((item): item is HomeHotSku => item != null);
+  const safeRecentSelfSelects = toArray(recentSelfSelects).filter(
+    (item): item is HomeCardItem => item != null,
+  );
+  const safeSubstitutes = toArray(substitutes).filter(
+    (item): item is SubstituteRecommendationInput => item != null,
+  );
   const selectedSkus = new Set(
-    recentSelfSelects
+    safeRecentSelfSelects
       .map(toSkuIdentity)
       .filter((item): item is SkuIdentity => item != null)
       .map(getSkuKey),
@@ -69,13 +76,13 @@ export function buildDiscoveryRecommendations({
   const candidates = new Map<string, RankedRecommendation>();
   let inputOrder = 0;
 
-  substitutes.forEach(input => {
+  safeSubstitutes.forEach(input => {
     const selected = toSkuIdentity(input.selected);
     if (!selected) {
       return;
     }
 
-    input.substitute.factories.forEach(factory => {
+    toArray(input.substitute?.factories).forEach(factory => {
       const factoryNo = normalizeFactoryNoOrNull(factory.factoryNo);
       if (!factoryNo || factoryNo === selected.factoryNo) {
         return;
@@ -106,7 +113,7 @@ export function buildDiscoveryRecommendations({
     });
   });
 
-  hotSkus.forEach(hotSku => {
+  safeHotSkus.forEach(hotSku => {
     const identity = toSkuIdentity(hotSku);
     if (!identity) {
       return;
@@ -117,7 +124,7 @@ export function buildDiscoveryRecommendations({
       return;
     }
 
-    const preference = getPreference(identity, recentSelfSelects);
+    const preference = getPreference(identity, safeRecentSelfSelects);
     const source: DiscoveryRecommendationSource = preference.score > 0
       ? 'preference'
       : 'hot';
@@ -287,7 +294,7 @@ function mergeRecommendation(
 }
 
 function toSkuIdentity(
-  value: Pick<HomeHotSku, 'country' | 'factoryNo' | 'productName'>,
+  value?: Pick<HomeHotSku, 'country' | 'factoryNo' | 'productName'> | null,
 ): SkuIdentity | null {
   const country = value.country?.trim();
   const factoryNo = normalizeFactoryNoOrNull(value.factoryNo);
@@ -312,9 +319,13 @@ function getActivityScore(
 }
 
 function sanitizeTrendPoints(points?: HomeHotSkuTrendPoint[] | null) {
-  return (points ?? []).filter(
+  return toArray(points).filter(
     point => typeof point.avgPrice === 'number' && Number.isFinite(point.avgPrice),
   );
+}
+
+function toArray<T>(value?: T[] | null) {
+  return Array.isArray(value) ? value : [];
 }
 
 function toNullableNumber(value?: number | null) {

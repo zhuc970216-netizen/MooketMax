@@ -177,4 +177,42 @@ describe('buildDiscoveryRecommendations', () => {
       productName: ' 牛前八件套 ',
     })).toBe('巴西|sif411|牛前八件套');
   });
+
+  it('treats null API arrays as empty lists instead of throwing', () => {
+    expect(() =>
+      buildDiscoveryRecommendations({
+        hotSkus: null,
+        recentSelfSelects: null,
+        substitutes: null,
+      }),
+    ).not.toThrow();
+
+    expect(
+      buildDiscoveryRecommendations({
+        hotSkus: null,
+        recentSelfSelects: null,
+        substitutes: null,
+      }),
+    ).toEqual([]);
+  });
+
+  it('skips substitute inputs with null factories and sanitizes null trend points', () => {
+    const result = buildDiscoveryRecommendations({
+      hotSkus: [{...hotSkus[0], trendPoints: null}],
+      recentSelfSelects: selected,
+      substitutes: [
+        {
+          selected: selected[0],
+          substitute: {...substitute, factories: null as unknown as SubstituteProduct['factories']},
+        },
+      ],
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      factoryNo: 'SIF3941',
+      source: 'preference',
+    });
+    expect(result[0].trendPoints).toEqual([]);
+  });
 });
