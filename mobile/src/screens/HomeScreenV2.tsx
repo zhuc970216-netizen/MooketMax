@@ -795,11 +795,9 @@ export function HomeScreenV2({navigation}: Props) {
       ) : activeTab === 'discover' ? (
         <DiscoverScreen
           header={commonHeader}
-          category={category}
           items={discoverItems}
           loading={discoverLoading}
           error={discoverError}
-          onCategoryChange={setCategory}
           onRefresh={() => loadDiscovery()}
           onPress={item => openHotSku({...item, title: `${item.factoryNo} ${item.productName}`, price: priceRange(item.priceMin, item.priceMax), latestTime: 0, trend: item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value))})}
         />
@@ -979,26 +977,17 @@ function HotSkuReasonIcon({tone, color}: {tone: 'down' | 'quote' | 'replace'; co
   );
 }
 
-function DiscoverScreen({header, category, items, loading, error, onCategoryChange, onRefresh, onPress}: {
+function DiscoverScreen({header, items, loading, error, onRefresh, onPress}: {
   header: React.ReactNode;
-  category: string;
   items: DiscoveryRecommendation[];
   loading: boolean;
   error: string;
-  onCategoryChange: (value: string) => void;
   onRefresh: () => void;
   onPress: (item: DiscoveryRecommendation) => void;
 }) {
   return (
     <View style={styles.discoverPage}>
       {header}
-      <View style={styles.discoverToolbar}>
-        <Text style={styles.discoverTitle}>为你发现</Text>
-        <Pressable onPress={() => onCategoryChange(category === '牛' ? '猪' : '牛')} style={styles.discoverCategory}>
-          <Text style={styles.discoverCategoryText}>{category}类推荐</Text>
-          <ChevronDownIcon />
-        </Pressable>
-      </View>
       <FlatList
         data={items}
         keyExtractor={item => item.key}
@@ -1128,10 +1117,13 @@ function DiscoveryComboBlock({item}: {item: DiscoveryRecommendation}) {
 type DiscoveryCardVariant = 'substitute' | 'down' | 'merchant' | 'hot' | 'combo';
 
 function getDiscoveryVariant(item: DiscoveryRecommendation, trend: number[]): DiscoveryCardVariant {
+  const reason = item.reason;
   if (item.source === 'substitute') return 'substitute';
   if (isTrendDown(trend)) return 'down';
-  if (item.merchantCount >= 60) return 'merchant';
-  if (item.offerCount >= 90) return 'hot';
+  if (reason.includes('多家') || reason.includes('商家多')) return 'merchant';
+  if (reason.includes('活跃') || reason.includes('热度')) return 'hot';
+  if (item.merchantCount >= 70) return 'merchant';
+  if (item.offerCount >= 120) return 'hot';
   return 'combo';
 }
 
@@ -1215,31 +1207,44 @@ function ensureDiscoveryDemoCoverage(items: DiscoveryRecommendation[]) {
 }
 
 function sortDiscoveryCardsForDisplay(items: DiscoveryRecommendation[]) {
-  return [...items].sort((left, right) => {
-    const leftPriority = getDiscoveryDisplayPriority(left);
-    const rightPriority = getDiscoveryDisplayPriority(right);
-    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
-    if (left.offerCount !== right.offerCount) return right.offerCount - left.offerCount;
-    if (left.merchantCount !== right.merchantCount) return right.merchantCount - left.merchantCount;
-    return right.score - left.score;
+  const buckets: Record<DiscoveryCardVariant, DiscoveryRecommendation[]> = {
+    down: [],
+    combo: [],
+    substitute: [],
+    merchant: [],
+    hot: [],
+  };
+  items.forEach(item => {
+    const trend = item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value) && value > 0);
+    buckets[getDiscoveryVariant(item, trend)].push(item);
   });
+  (Object.keys(buckets) as DiscoveryCardVariant[]).forEach(variant => {
+    buckets[variant].sort(compareDiscoveryActivity);
+  });
+
+  const result: DiscoveryRecommendation[] = [];
+  const firstThree: DiscoveryCardVariant[] = ['down', 'combo', 'substitute'];
+  firstThree.forEach(variant => {
+    const item = buckets[variant].shift();
+    if (item) result.push(item);
+  });
+
+  const cycle: DiscoveryCardVariant[] = ['merchant', 'hot', 'down', 'combo', 'substitute'];
+  while (result.length < items.length) {
+    const before = result.length;
+    cycle.forEach(variant => {
+      const item = buckets[variant].shift();
+      if (item) result.push(item);
+    });
+    if (result.length === before) break;
+  }
+  return result;
 }
 
-function getDiscoveryDisplayPriority(item: DiscoveryRecommendation) {
-  const trend = item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value) && value > 0);
-  const variant = getDiscoveryVariant(item, trend);
-  switch (variant) {
-    case 'down':
-      return 1;
-    case 'combo':
-      return 2;
-    case 'substitute':
-      return 3;
-    case 'merchant':
-      return 4;
-    case 'hot':
-      return 5;
-  }
+function compareDiscoveryActivity(left: DiscoveryRecommendation, right: DiscoveryRecommendation) {
+  if (left.offerCount !== right.offerCount) return right.offerCount - left.offerCount;
+  if (left.merchantCount !== right.merchantCount) return right.merchantCount - left.merchantCount;
+  return right.score - left.score;
 }
 
 const DISCOVERY_DEMO_RECOMMENDATIONS: DiscoveryRecommendation[] = [
@@ -1251,8 +1256,8 @@ const DISCOVERY_DEMO_RECOMMENDATIONS: DiscoveryRecommendation[] = [
     productName: '胸肉',
     priceMin: 50.7,
     priceMax: 52,
-    offerCount: 98,
-    merchantCount: 58,
+    offerCount: 42,
+    merchantCount: 24,
     trendPoints: [],
     source: 'substitute',
     reason: '你关注的 SIF504 牛腩的替代品',
@@ -1266,8 +1271,8 @@ const DISCOVERY_DEMO_RECOMMENDATIONS: DiscoveryRecommendation[] = [
     productName: '牛前八件套',
     priceMin: 54.4,
     priceMax: 56.5,
-    offerCount: 121,
-    merchantCount: 78,
+    offerCount: 63,
+    merchantCount: 31,
     trendPoints: [
       {date: '2026-08-07', avgPrice: 57.4, offerCount: 12},
       {date: '2026-08-08', avgPrice: 57.1, offerCount: 15},
@@ -1289,8 +1294,8 @@ const DISCOVERY_DEMO_RECOMMENDATIONS: DiscoveryRecommendation[] = [
     productName: '胸肉',
     priceMin: 50.2,
     priceMax: 51.5,
-    offerCount: 138,
-    merchantCount: 86,
+    offerCount: 58,
+    merchantCount: 36,
     trendPoints: [
       {date: '2026-08-07', avgPrice: 50.6, offerCount: 16},
       {date: '2026-08-08', avgPrice: 50.8, offerCount: 18},
@@ -1312,8 +1317,8 @@ const DISCOVERY_DEMO_RECOMMENDATIONS: DiscoveryRecommendation[] = [
     productName: '板腱',
     priceMin: 62,
     priceMax: 63.8,
-    offerCount: 96,
-    merchantCount: 42,
+    offerCount: 74,
+    merchantCount: 28,
     trendPoints: [
       {date: '2026-08-07', avgPrice: 62.1, offerCount: 7},
       {date: '2026-08-08', avgPrice: 62.4, offerCount: 9},
@@ -2021,12 +2026,13 @@ function groupFeedItems(
     const country = clean(item.country);
     const factoryNo = normalizeFactoryNoOrNull(item.factoryNo) ?? clean(item.factoryNo);
     const merchantName = clean(item.merchantShortName) || clean(item.merchantName) || '暂未关联行业商家';
+    if (isUnlinkedMerchantName(merchantName)) return;
     const key = [productName, country, factoryNo].join('|');
     const current = groups.get(key);
     if (current) {
       current.items.push(item);
       current.price = mergePrice(current.items, type);
-      current.time = formatCardTime(current.items[0]?.publishTime);
+      current.time = current.items[0]?.publishTime ?? '';
       return;
     }
     groups.set(key, {
@@ -2038,7 +2044,7 @@ function groupFeedItems(
       merchantName,
       merchantId: item.merchantId,
       price: mergePrice([item], type),
-      time: formatCardTime(item.publishTime),
+      time: item.publishTime ?? '',
       items: [item],
     });
   });
