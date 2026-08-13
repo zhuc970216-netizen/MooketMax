@@ -47,6 +47,14 @@ import {
 import {enrichSelfSelectCards, mergeSelfSelectCardsWithHistories, sortSelfSelectCardsByCreateTime} from '../utils/selfSelectCards';
 import {openHomeCard, openHotSearch} from '../utils/navigation';
 import {buildDiscoveryRecommendations, type DiscoveryRecommendation, type SubstituteRecommendationInput} from '../utils/discoveryRecommendations';
+import {
+  DEV_FILTER_OPTIONS,
+  DEV_HOT_SEARCHES,
+  DEV_HOT_SKUS,
+  DEV_OFFER_FEED_ITEMS,
+  DEV_SELF_SELECT_RESPONSE,
+  isDevNetworkError,
+} from '../utils/devHomeFixtures';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 type MainTab = 'offer' | 'inquiry' | 'self' | 'discover';
@@ -83,6 +91,7 @@ type HotSkuPriceStat = {
   offerCount: number;
   latestTime: number;
   trend: number[];
+  devFixture?: boolean;
 };
 
 type FallbackTrendMeta = {
@@ -178,9 +187,15 @@ export function HomeScreenV2({navigation}: Props) {
     ]);
     if (seq !== homeRequestSeqRef.current) return;
 
-    const hotData = hotDataResult.status === 'fulfilled' ? hotDataResult.value : [];
-    const hotSkuData = hotSkuResult.status === 'fulfilled' ? hotSkuResult.value : null;
-    const selfSelectData = selfSelectResult.status === 'fulfilled' ? selfSelectResult.value : {cards: []};
+    const useDevFallback =
+      hotDataResult.status === 'rejected' &&
+      hotSkuResult.status === 'rejected' &&
+      selfSelectResult.status === 'rejected' &&
+      isDevNetworkError(hotDataResult.reason);
+    const hotData = hotDataResult.status === 'fulfilled' ? hotDataResult.value : useDevFallback ? DEV_HOT_SEARCHES : [];
+    const hotSkuData = hotSkuResult.status === 'fulfilled' ? hotSkuResult.value : useDevFallback ? DEV_HOT_SKUS : null;
+    const selfSelectData =
+      selfSelectResult.status === 'fulfilled' ? selfSelectResult.value : useDevFallback ? DEV_SELF_SELECT_RESPONSE : {cards: []};
     const selfSelectHistories = selfSelectHistoriesResult.status === 'fulfilled' ? selfSelectHistoriesResult.value : [];
     const merged = mergeSelfSelectCardsWithHistories(selfSelectData.cards ?? [], selfSelectHistories);
     const enriched = await enrichSelfSelectCards(category, merged);
@@ -218,6 +233,13 @@ export function HomeScreenV2({navigation}: Props) {
       setExpandedKeys(new Set());
     } catch (error) {
       if (seq !== requestSeqRef.current) return;
+      if (isDevNetworkError(error)) {
+        setFeedError('');
+        setFeedItems(getDevOfferFeedItems(category));
+        setFilterOptions(DEV_FILTER_OPTIONS);
+        setExpandedKeys(new Set());
+        return;
+      }
       setFeedError(error instanceof Error ? error.message : '请稍后重试');
       setFeedItems([]);
     } finally {
@@ -328,7 +350,7 @@ export function HomeScreenV2({navigation}: Props) {
 
     const seq = (fallbackTrendSeqRef.current += 1);
     const targets = rawFallbackHotSkuPriceStats
-      .filter(item => item.country && item.factoryNo && item.productName)
+      .filter(item => !item.devFixture && item.country && item.factoryNo && item.productName)
       .slice(0, 3);
 
     Promise.all(
@@ -647,9 +669,6 @@ export function HomeScreenV2({navigation}: Props) {
               <SearchIcon />
             </Pressable>
           </View>
-          {activeTab === 'offer' && displayHotSkuPriceStats.length > 0 ? (
-            <HotSkuPriceStrip items={displayHotSkuPriceStats} onPress={openHotSku} onMore={() => handleMainTabPress('discover')} />
-          ) : null}
           <View style={styles.hotRow}>
             <Text style={styles.hotLabel}>热门搜索</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hotList}>
@@ -667,6 +686,9 @@ export function HomeScreenV2({navigation}: Props) {
               )}
             </ScrollView>
           </View>
+          {activeTab === 'offer' && displayHotSkuPriceStats.length > 0 ? (
+            <HotSkuPriceStrip items={displayHotSkuPriceStats} onPress={openHotSku} onMore={() => handleMainTabPress('discover')} />
+          ) : null}
         </>
       ) : null}
     </View>
@@ -841,6 +863,11 @@ function TopTab({title, active, onPress}: {title: string; active: boolean; onPre
 }
 
 function HotSkuPriceStrip({items, onPress, onMore}: {items: HotSkuPriceStat[]; onPress: (item: HotSkuPriceStat) => void; onMore: () => void}) {
+  const reasons = [
+    {label: '近7日降价', tone: 'down'},
+    {label: '多家报价', tone: 'quote'},
+    {label: '关注品替代', tone: 'replace'},
+  ] as const;
   return (
     <View style={styles.hotSkuStrip}>
       <View style={styles.hotSkuItems}>{items.map((item, index) => (
@@ -848,18 +875,64 @@ function HotSkuPriceStrip({items, onPress, onMore}: {items: HotSkuPriceStat[]; o
           key={item.key}
           onPress={() => onPress(item)}
           style={[styles.hotSkuCell, index > 0 ? styles.hotSkuCellDivider : null]}>
+          {(() => {
+            const reason = reasons[index] ?? {label: '值得关注', tone: 'quote' as const};
+            const toneStyle = getHotSkuReasonTone(reason.tone);
+            return (
+              <>
           <Text style={styles.hotSkuTitle} numberOfLines={1}>{item.title}</Text>
           <Text style={styles.hotSkuPrice} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>{item.price}</Text>
-          <Text style={styles.hotSkuMerchantCount} numberOfLines={1}>{item.merchantCount}商家</Text>
           <View style={styles.hotSkuTrend}>
             <MiniTrendChart data={item.trend} width={86} height={18} color={colors.primary} />
           </View>
+                <View style={[styles.hotSkuReasonPill, toneStyle.pill]}>
+                  <HotSkuReasonIcon tone={reason.tone} color={toneStyle.color} />
+                  <Text style={[styles.hotSkuReasonText, {color: toneStyle.color}]} numberOfLines={1}>{reason.label}</Text>
+                </View>
+              </>
+            );
+          })()}
         </Pressable>
       ))}</View>
       <Pressable onPress={onMore} style={styles.hotSkuMore} accessibilityLabel="查看更多推荐">
         <Text style={styles.hotSkuMoreText}>›</Text>
       </Pressable>
     </View>
+  );
+}
+
+function getHotSkuReasonTone(tone: 'down' | 'quote' | 'replace') {
+  if (tone === 'down') {
+    return {color: '#C94B3F', pill: styles.hotSkuReasonDown};
+  }
+  if (tone === 'replace') {
+    return {color: '#2D6E78', pill: styles.hotSkuReasonReplace};
+  }
+  return {color: colors.primary, pill: styles.hotSkuReasonQuote};
+}
+
+function HotSkuReasonIcon({tone, color}: {tone: 'down' | 'quote' | 'replace'; color: string}) {
+  if (tone === 'down') {
+    return (
+      <Svg width={10} height={10} viewBox="0 0 10 10" fill="none">
+        <Path d="M5 1.4V7.2M2.7 5L5 7.3L7.3 5" stroke={color} strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
+    );
+  }
+  if (tone === 'replace') {
+    return (
+      <Svg width={10} height={10} viewBox="0 0 10 10" fill="none">
+        <Path d="M2 7.5C3.2 7.5 3.8 6.6 4.5 5C5.2 3.4 5.8 2.5 7.5 2.5" stroke={color} strokeWidth={1.2} strokeLinecap="round" />
+        <Path d="M6.2 1.4L7.6 2.5L6.2 3.6" stroke={color} strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
+    );
+  }
+  return (
+    <Svg width={10} height={10} viewBox="0 0 10 10" fill="none">
+      <Circle cx={3} cy={5} r={1.1} fill={color} />
+      <Circle cx={5} cy={5} r={1.1} fill={color} opacity={0.75} />
+      <Circle cx={7} cy={5} r={1.1} fill={color} opacity={0.5} />
+    </Svg>
   );
 }
 
@@ -1731,10 +1804,20 @@ function buildFallbackHotSkuPriceStats(items: OfferFeedItem[]): HotSkuPriceStat[
         offerCount: group.count,
         latestTime: group.latestTime,
         trend: buildFallbackHotSkuTrend(group.trendByDate),
+        devFixture: isDevOfferItem(group.item),
       };
     })
     .sort((left, right) => right.offerCount - left.offerCount || right.merchantCount - left.merchantCount || right.latestTime - left.latestTime)
     .slice(0, 3);
+}
+
+function getDevOfferFeedItems(category: string) {
+  const normalizedCategory = clean(category);
+  return DEV_OFFER_FEED_ITEMS.filter(item => (clean(item.category) || normalizedCategory) === normalizedCategory);
+}
+
+function isDevOfferItem(item?: OfferFeedItem) {
+  return typeof item?.offerId === 'number' && item.offerId >= 900000;
 }
 
 function buildHomeHotSkuTrend(item: HomeHotSku) {
@@ -2319,8 +2402,8 @@ const styles = StyleSheet.create({
   topLine: {height: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   mainTabs: {flexDirection: 'row', alignItems: 'center', gap: 12},
   topTab: {height: 52, justifyContent: 'center'},
-  topTabText: {color: colors.textSecondary, fontSize: 18, fontWeight: '700', lineHeight: 24},
-  topTabTextActive: {color: colors.text, fontWeight: '800'},
+  topTabText: {color: '#8D9996', fontSize: 16, fontWeight: '700', lineHeight: 22},
+  topTabTextActive: {color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: '800'},
   topTabLine: {marginTop: 5, width: 22, height: 3, borderRadius: 2, backgroundColor: 'transparent'},
   topTabLineActive: {backgroundColor: '#F0602B'},
   askAiButton: {height: 32, minWidth: 96, paddingHorizontal: 10, borderRadius: 16, backgroundColor: colors.primaryLight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4},
@@ -2332,16 +2415,20 @@ const styles = StyleSheet.create({
   searchInput: {flex: 1, height: '100%', justifyContent: 'center', paddingHorizontal: 13},
   searchPlaceholder: {color: 'rgba(108,122,119,0.5)', fontSize: 14},
   searchIconButton: {width: 42, height: 42, alignItems: 'center', justifyContent: 'center'},
-  hotSkuStrip: {marginTop: 10, minHeight: 96, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E1EBE8', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E1EBE8', flexDirection: 'row', backgroundColor: '#FFFFFF'},
+  hotSkuStrip: {marginTop: 8, minHeight: 88, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E1EBE8', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E1EBE8', flexDirection: 'row', backgroundColor: '#FFFFFF'},
   hotSkuItems: {flex: 1, minWidth: 0, flexDirection: 'row'},
-  hotSkuCell: {flex: 1, minWidth: 0, paddingHorizontal: 8, paddingTop: 9, paddingBottom: 7, justifyContent: 'center'},
+  hotSkuCell: {flex: 1, minWidth: 0, paddingHorizontal: 8, paddingTop: 7, paddingBottom: 6, justifyContent: 'center'},
   hotSkuMore: {width: 32, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#D9E6E3', alignItems: 'center', justifyContent: 'center'},
   hotSkuMoreText: {color: colors.primary, fontSize: 34, lineHeight: 38, fontWeight: '500'},
   hotSkuCellDivider: {borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#E1EBE8'},
   hotSkuTitle: {color: '#7F8D89', fontSize: 12, lineHeight: 16, fontWeight: '800'},
-  hotSkuPrice: {marginTop: 2, color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: '900', letterSpacing: 0},
-  hotSkuMerchantCount: {marginTop: 2, color: '#7F8D89', fontSize: 11, lineHeight: 15, fontWeight: '700'},
-  hotSkuTrend: {marginTop: 4, width: '100%', height: 18, overflow: 'hidden'},
+  hotSkuPrice: {marginTop: 1, color: colors.text, fontSize: 18, lineHeight: 22, fontWeight: '900', letterSpacing: 0},
+  hotSkuTrend: {marginTop: 3, width: '100%', height: 16, overflow: 'hidden'},
+  hotSkuReasonPill: {marginTop: 2, alignSelf: 'flex-start', height: 17, maxWidth: '100%', paddingHorizontal: 5, borderRadius: 9, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 3},
+  hotSkuReasonDown: {backgroundColor: '#FFF1EF', borderColor: '#F3C1BA'},
+  hotSkuReasonQuote: {backgroundColor: colors.primaryLight, borderColor: '#B9DED8'},
+  hotSkuReasonReplace: {backgroundColor: '#EEF7FA', borderColor: '#BCDDE4'},
+  hotSkuReasonText: {fontSize: 10, lineHeight: 13, fontWeight: '800'},
   hotRow: {marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8},
   hotLabel: {color: colors.textSecondary, fontSize: 12},
   hotList: {gap: 8, alignItems: 'center', paddingRight: 10},

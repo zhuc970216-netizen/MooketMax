@@ -96,6 +96,7 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
               item={latest}
               price={group.price}
               time={group.time}
+              highlighted={expanded}
               onPress={() => onToggle(group.key)}
               register={register}
               onSync={syncScroll}
@@ -112,6 +113,7 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
                     item={item}
                     price={formatOfferTablePrice(item.price, item.priceMax)}
                     time={formatTime(item.publishTime)}
+                    highlighted
                     onPress={() => onPublisherPress(item)}
                     register={register}
                     onSync={syncScroll}
@@ -144,10 +146,11 @@ type SyncProps = {
   onBeginScroll: (key: string) => void;
 };
 
-function TableRow({rowKey, publisher = false, expanded, leftTitle, leftMeta, item, price, time, onPress, register, onSync, onBeginScroll}: SyncProps & {
+function TableRow({rowKey, publisher = false, expanded, highlighted = false, leftTitle, leftMeta, item, price, time, onPress, register, onSync, onBeginScroll}: SyncProps & {
   rowKey: string;
   publisher?: boolean;
   expanded?: boolean;
+  highlighted?: boolean;
   leftTitle: string;
   leftMeta: string;
   item?: OfferFeedItem;
@@ -157,26 +160,27 @@ function TableRow({rowKey, publisher = false, expanded, leftTitle, leftMeta, ite
 }) {
   const values = getOfferTableValues(item);
   return (
-    <Pressable onPress={onPress} style={({pressed}) => [styles.row, publisher && styles.publisherRow, pressed && styles.pressed]}>
-      <View style={styles.left}>
+    <View style={[styles.row, highlighted && styles.highlightedRow, publisher && styles.publisherRow]}>
+      <Pressable onPress={onPress} style={({pressed}) => [styles.left, highlighted && styles.highlightedCell, pressed && styles.pressed]}>
         <View style={styles.leftTitleLine}>
           {!publisher ? <Text style={styles.chevron}>{expanded ? '⌃' : '⌄'}</Text> : <View style={styles.publisherDot} />}
+          {publisher ? <Text style={styles.publisherAvatarText}>{getAvatarText(leftTitle)}</Text> : null}
           <Text style={[styles.leftTitle, publisher && styles.publisherTitle]} numberOfLines={1}>{leftTitle}</Text>
         </View>
-        <Text style={styles.leftMeta} numberOfLines={1}>{leftMeta || '-'}</Text>
-      </View>
+        {!publisher ? <Text style={styles.leftMeta} numberOfLines={1}>{leftMeta || '-'}</Text> : null}
+      </Pressable>
       <MiddleScroll rowKey={rowKey} register={register} onSync={onSync} onBeginScroll={onBeginScroll}>
         {columns.map((column, index) => (
-          <View key={column.key} style={[styles.middleCell, {width: column.width}]}>
+          <View key={column.key} style={[styles.middleCell, highlighted && styles.highlightedCell, {width: column.width}]}>
             <Text style={styles.middleText} numberOfLines={1}>{values[index]}</Text>
           </View>
         ))}
       </MiddleScroll>
-      <View style={styles.right}>
+      <Pressable onPress={onPress} style={({pressed}) => [styles.right, highlighted && styles.highlightedCell, pressed && styles.pressed]}>
         <Text style={[styles.price, price === '协商报价' && styles.negotiate]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{price}</Text>
         <Text style={styles.time}>{time || '-'}</Text>
-      </View>
-    </Pressable>
+      </Pressable>
+    </View>
   );
 }
 
@@ -213,6 +217,11 @@ function formatTime(value?: string | null) {
   return match ? `${match[1].padStart(2, '0')}:${match[2]}` : value.slice(5, 10);
 }
 
+function getAvatarText(value: string) {
+  const text = clean(value).replace(/\s+/g, '');
+  return text ? text.slice(0, 1) : '?';
+}
+
 const styles = StyleSheet.create({
   table: {backgroundColor: '#FFFFFF'},
   row: {minHeight: 64, flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#DFE8E6', backgroundColor: '#FFFFFF'},
@@ -223,7 +232,8 @@ const styles = StyleSheet.create({
   left: {width: LEFT_WIDTH, paddingHorizontal: 10, justifyContent: 'center', backgroundColor: '#FFFFFF', zIndex: 2},
   leftTitleLine: {flexDirection: 'row', alignItems: 'center', minWidth: 0, gap: 4},
   chevron: {width: 13, color: colors.primary, fontSize: 13, fontWeight: '900'},
-  publisherDot: {width: 6, height: 6, marginHorizontal: 3, borderRadius: 3, backgroundColor: colors.primary},
+  publisherDot: {width: 24, height: 24, marginRight: -22, borderRadius: 12, backgroundColor: colors.primary},
+  publisherAvatarText: {width: 24, color: '#FFFFFF', fontSize: 12, lineHeight: 16, fontWeight: '900', textAlign: 'center', zIndex: 3},
   leftTitle: {flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: '800'},
   publisherTitle: {fontSize: 14},
   leftMeta: {marginTop: 3, color: colors.textMuted, fontSize: 10, lineHeight: 14},
@@ -235,6 +245,8 @@ const styles = StyleSheet.create({
   price: {width: '100%', color: colors.price, fontSize: 14, lineHeight: 19, fontWeight: '800', textAlign: 'right'},
   negotiate: {color: colors.primary, fontSize: 13},
   time: {marginTop: 3, color: colors.textMuted, fontSize: 10, lineHeight: 14},
-  publisherRow: {minHeight: 58, backgroundColor: '#FAFFFE'},
+  highlightedRow: {backgroundColor: '#F3FAF8'},
+  highlightedCell: {backgroundColor: '#F3FAF8'},
+  publisherRow: {minHeight: 58},
   pressed: {backgroundColor: '#F0F8F6'},
 });
