@@ -808,12 +808,12 @@ export function HomeScreenV2({navigation}: Props) {
         />
       ) : (
         <>
+          {stickyHeader}
           <FlatList
-            data={[{key: 'sticky-header'}, {key: 'intro'}, {key: 'filters'}, {key: 'offer-table'}]}
+            data={[{key: 'intro'}, {key: 'filters'}, {key: 'offer-table'}]}
             keyExtractor={item => item.key}
-            stickyHeaderIndices={[0, 2]}
+            stickyHeaderIndices={[1]}
             renderItem={({item}) => {
-              if (item.key === 'sticky-header') return stickyHeader;
               if (item.key === 'intro') return offerIntroHeader;
               if (item.key === 'filters') {
                 return (
@@ -1209,12 +1209,22 @@ function getDiscoveryCompanionProduct(productName: string) {
 function ensureDiscoveryDemoCoverage(items: DiscoveryRecommendation[]) {
   const existing = new Set(items.map(item => item.key));
   const covered = new Set(items.map(item => getDiscoveryVariant(item, item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value) && value > 0))));
+  const forcedDemoKeys = new Set(['demo|down|巴西|SIF2015|牛前八件套']);
+  const forcedDemos = DISCOVERY_DEMO_RECOMMENDATIONS.filter(item => forcedDemoKeys.has(item.key));
   const additions = DISCOVERY_DEMO_RECOMMENDATIONS.filter(item => {
+    if (forcedDemoKeys.has(item.key)) return false;
     const trend = item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value) && value > 0);
     const variant = getDiscoveryVariant(item, trend);
     return !existing.has(item.key) && !covered.has(variant);
   });
-  return [...items, ...additions].slice(0, 30);
+  const result: DiscoveryRecommendation[] = [];
+  const seen = new Set<string>();
+  [...forcedDemos, ...items, ...additions].forEach(item => {
+    if (seen.has(item.key)) return;
+    seen.add(item.key);
+    result.push(item);
+  });
+  return result.slice(0, 30);
 }
 
 function sortDiscoveryCardsForDisplay(items: DiscoveryRecommendation[]) {
@@ -2037,7 +2047,7 @@ function groupFeedItems(
     const country = clean(item.country);
     const factoryNo = normalizeFactoryNoOrNull(item.factoryNo) ?? clean(item.factoryNo);
     const merchantName = clean(item.merchantShortName) || clean(item.merchantName) || '暂未关联行业商家';
-    if (isUnlinkedMerchantName(merchantName)) return;
+    if (type === 'offer' && isUnlinkedMerchantName(merchantName)) return;
     const key = [productName, country, factoryNo].join('|');
     const current = groups.get(key);
     if (current) {

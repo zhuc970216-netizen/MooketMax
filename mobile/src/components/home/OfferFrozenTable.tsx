@@ -212,9 +212,9 @@ function TableRow({rowKey, publisher = false, highlighted = false, leftTitle, le
       </Pressable>
       <MiddleScroll rowKey={rowKey} register={register} onSync={onSync} onBeginScroll={onBeginScroll}>
         {columns.map((column, index) => (
-          <View key={column.key} style={[styles.middleCell, highlighted && styles.highlightedCell, {width: column.width}]}>
+          <Pressable key={column.key} onPress={onPress} style={({pressed}) => [styles.middleCell, highlighted && styles.highlightedCell, pressed && styles.pressed, {width: column.width}]}>
             <Text style={styles.middleText} numberOfLines={1}>{values[index]}</Text>
-          </View>
+          </Pressable>
         ))}
       </MiddleScroll>
     </View>
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
   priceLine: {width: '100%', flexDirection: 'row', alignItems: 'center', gap: 3},
   price: {flexShrink: 1, minWidth: 0, color: colors.price, fontSize: 14, lineHeight: 19, fontWeight: '800', textAlign: 'left'},
   priceWithBadge: {maxWidth: 36},
-  lowPriceBadge: {height: 15, paddingHorizontal: 3, borderRadius: 3, overflow: 'hidden', backgroundColor: '#FFF1EF', color: colors.price, fontSize: 9, lineHeight: 15, fontWeight: '800'},
+  lowPriceBadge: {height: 17, paddingHorizontal: 4, borderRadius: 3, overflow: 'hidden', backgroundColor: '#FFF7D8', color: '#D98200', fontSize: 10, lineHeight: 17, fontWeight: '800'},
   negotiate: {color: colors.primary, fontSize: 13},
   time: {marginTop: 3, color: colors.textMuted, fontSize: 10, lineHeight: 14},
   highlightedRow: {backgroundColor: '#F3FAF8'},
