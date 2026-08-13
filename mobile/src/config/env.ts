@@ -1,5 +1,5 @@
 export const API_BASE_URL =
-  'https://sample-assessing-sie-ensure.trycloudflare.com/social/';
+  'http://192.168.3.104:8088/social/';
 export const DEFAULT_CATEGORY = '牛';
 export const CURRENT_APP_VERSION = '1.0.19';
 export const CURRENT_APP_VERSION_CODE = 21;
