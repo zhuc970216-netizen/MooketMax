@@ -24,7 +24,7 @@ import {FilterPanelSheet, MultiSelectChips} from '../components/detail/FilterPan
 import {OriginalTextSheet} from '../components/detail/OriginalTextSheet';
 import {MiniTrendChart} from '../components/home/MiniTrendChart';
 import {OfferActionSheet} from '../components/home/OfferActionSheet';
-import {OfferFrozenTable} from '../components/home/OfferFrozenTable';
+import {OfferFrozenTable, OfferFrozenTableHeader} from '../components/home/OfferFrozenTable';
 import {DEFAULT_CATEGORY} from '../config/env';
 import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
@@ -679,7 +679,7 @@ export function HomeScreenV2({navigation}: Props) {
     });
   }
 
-  const commonHeader = (
+  const stickyHeader = (
     <View style={styles.headerBlock}>
       <View style={styles.topLine}>
         <View style={styles.mainTabs}>
@@ -709,30 +709,35 @@ export function HomeScreenV2({navigation}: Props) {
               <SearchIcon />
             </Pressable>
           </View>
-          <View style={styles.hotRow}>
-            <Text style={styles.hotLabel}>热门搜索</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hotList}>
-              {hotSearches.length === 0 ? (
-                <Text style={styles.hotEmpty}>暂无热门搜索</Text>
-              ) : (
-                hotSearches.slice(0, 8).map(item => (
-                  <Pressable
-                    key={`${item.dimension}-${item.keyword}`}
-                    onPress={() => openHotSearch(navigation, category, item)}
-                    style={styles.hotChip}>
-                    <Text style={styles.hotChipText} numberOfLines={1}>{item.keyword}</Text>
-                  </Pressable>
-                ))
-              )}
-            </ScrollView>
-          </View>
-          {activeTab === 'offer' && displayHotSkuPriceStats.length > 0 ? (
-            <HotSkuPriceStrip items={displayHotSkuPriceStats} onPress={openHotSku} onMore={() => handleMainTabPress('discover')} />
-          ) : null}
         </>
       ) : null}
     </View>
   );
+  const commonHeader = stickyHeader;
+  const offerIntroHeader = activeTab !== 'self' && activeTab !== 'discover' ? (
+    <View style={styles.offerIntroBlock}>
+      <View style={styles.hotRow}>
+        <Text style={styles.hotLabel}>热门搜索</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.hotList}>
+          {hotSearches.length === 0 ? (
+            <Text style={styles.hotEmpty}>暂无热门搜索</Text>
+          ) : (
+            hotSearches.slice(0, 8).map(item => (
+              <Pressable
+                key={`${item.dimension}-${item.keyword}`}
+                onPress={() => openHotSearch(navigation, category, item)}
+                style={styles.hotChip}>
+                <Text style={styles.hotChipText} numberOfLines={1}>{item.keyword}</Text>
+              </Pressable>
+            ))
+          )}
+        </ScrollView>
+      </View>
+      {activeTab === 'offer' && displayHotSkuPriceStats.length > 0 ? (
+        <HotSkuPriceStrip items={displayHotSkuPriceStats} onPress={openHotSku} onMore={() => handleMainTabPress('discover')} />
+      ) : null}
+    </View>
+  ) : null;
 
   return (
     <View style={styles.container}>
@@ -804,36 +809,42 @@ export function HomeScreenV2({navigation}: Props) {
       ) : (
         <>
           <FlatList
-            data={[{key: 'offer-table'}]}
+            data={[{key: 'sticky-header'}, {key: 'intro'}, {key: 'filters'}, {key: 'offer-table'}]}
             keyExtractor={item => item.key}
-            ListHeaderComponent={
-              <>
-                {commonHeader}
-                <View style={styles.filterBlock}>
-                  <FilterBar filters={filterDefs} active={activeFilter as FilterKey | null} onPress={handleFilterPress} onBottomLayout={setFilterPanelTop} />
-                </View>
-              </>
-            }
-            renderItem={() => (
-              <>
-                <OfferFrozenTable
-                  groups={groups}
-                  expandedKeys={expandedKeys}
-                  onToggle={key => {
-                    setExpandedKeys(prev => {
-                      const next = new Set(prev);
-                      if (next.has(key)) next.delete(key);
-                      else next.add(key);
-                      return next;
-                    });
-                  }}
-                  onPublisherPress={setSelectedOffer}
-                />
-                {!loading && groups.length === 0 ? (
-                  <Text style={styles.empty}>{feedError || '暂无匹配数据'}</Text>
-                ) : null}
-              </>
-            )}
+            stickyHeaderIndices={[0, 2]}
+            renderItem={({item}) => {
+              if (item.key === 'sticky-header') return stickyHeader;
+              if (item.key === 'intro') return offerIntroHeader;
+              if (item.key === 'filters') {
+                return (
+                  <View style={styles.filterBlock}>
+                    <FilterBar filters={filterDefs} active={activeFilter as FilterKey | null} onPress={handleFilterPress} onBottomLayout={setFilterPanelTop} />
+                    <OfferFrozenTableHeader />
+                  </View>
+                );
+              }
+              return (
+                <>
+                  <OfferFrozenTable
+                    groups={groups}
+                    expandedKeys={expandedKeys}
+                    renderHeader={false}
+                    onToggle={key => {
+                      setExpandedKeys(prev => {
+                        const next = new Set(prev);
+                        if (next.has(key)) next.delete(key);
+                        else next.add(key);
+                        return next;
+                      });
+                    }}
+                    onPublisherPress={setSelectedOffer}
+                  />
+                  {!loading && groups.length === 0 ? (
+                    <Text style={styles.empty}>{feedError || '暂无匹配数据'}</Text>
+                  ) : null}
+                </>
+              );
+            }}
             ListEmptyComponent={loading ? <ActivityIndicator color={colors.primary} style={styles.loading} /> : null}
             ListFooterComponent={feedLoadingMore ? <ActivityIndicator color={colors.primary} style={styles.feedFooterLoading} /> : null}
             onEndReached={loadMoreFeed}

@@ -20,6 +20,7 @@ type Props = {
   expandedKeys: Set<string>;
   onToggle: (key: string) => void;
   onPublisherPress: (item: OfferFeedItem) => void;
+  renderHeader?: boolean;
 };
 
 const FROZEN_PADDING_LEFT = 10;
@@ -53,7 +54,7 @@ export function formatOfferTablePrice(price?: number | null, priceMax?: number |
   return min === max ? trimNumber(min) : `${trimNumber(min)}~${trimNumber(max)}`;
 }
 
-export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPress}: Props) {
+export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPress, renderHeader = true}: Props) {
   const scrollRefs = useRef(new Map<string, ScrollView>());
   const scrollX = useRef(0);
   const syncing = useRef(false);
@@ -86,7 +87,7 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
 
   return (
     <View style={styles.table}>
-      <TableHeader register={register} onSync={syncScroll} onBeginScroll={beginScroll} />
+      {renderHeader ? <TableHeader register={register} onSync={syncScroll} onBeginScroll={beginScroll} /> : null}
       {groups.map(group => {
         const latest = group.items[0];
         const expanded = expandedKeys.has(group.key);
@@ -130,6 +131,13 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
       })}
     </View>
   );
+}
+
+export function OfferFrozenTableHeader() {
+  const noopRegister = useCallback(() => undefined, []);
+  const noopSync = useCallback(() => undefined, []);
+  const noopBegin = useCallback(() => undefined, []);
+  return <TableHeader register={noopRegister} onSync={noopSync} onBeginScroll={noopBegin} />;
 }
 
 function TableHeader({register, onSync, onBeginScroll}: SyncProps) {
