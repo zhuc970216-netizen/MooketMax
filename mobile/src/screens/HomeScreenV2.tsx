@@ -131,7 +131,7 @@ const categoryOptions = ['牛', '猪'];
 const sortOptions: Array<{label: string; value: SortKind}> = [
   {label: '综合', value: 'comprehensive'},
   {label: '最新', value: 'publishTime'},
-  {label: '价格区间', value: 'priceAsc'},
+  {label: '低价优先', value: 'priceAsc'},
   {label: '高价优先', value: 'priceDesc'},
 ];
 export function HomeScreenV2({navigation}: Props) {
@@ -2012,7 +2012,7 @@ function FilterSheets({
               value={priceMinInput}
               onChangeText={setPriceMinInput}
               keyboardType="decimal-pad"
-              placeholder="渚嬪 32"
+              placeholder="例如 32"
               placeholderTextColor="#9DA4A3"
               style={styles.priceInput}
             />
@@ -2024,7 +2024,7 @@ function FilterSheets({
               value={priceMaxInput}
               onChangeText={setPriceMaxInput}
               keyboardType="decimal-pad"
-              placeholder="渚嬪 45"
+              placeholder="例如 45"
               placeholderTextColor="#9DA4A3"
               style={styles.priceInput}
             />
@@ -2343,7 +2343,7 @@ function sortToParam(sort: SortKind) {
 }
 
 function getSortLabel(sort: SortKind) {
-  return sortOptions.find(item => item.value === sort)?.label ?? '缁煎悎';
+  return sortOptions.find(item => item.value === sort)?.label ?? '综合';
 }
 
 function getPriceRangeLabel(min: string, max: string) {
@@ -2655,7 +2655,7 @@ function priceRange(min?: number | null, max?: number | null) {
 }
 
 function splitText(value?: string | null) {
-  return clean(value).split(/[,\s锛屻€亅]+/).map(item => item.trim()).filter(Boolean);
+  return clean(value).split(/[,\s，、]+/).map(item => item.trim()).filter(Boolean);
 }
 
 function clean(value?: string | null) {
