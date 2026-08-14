@@ -58,6 +58,7 @@ import {
 } from '../utils/devHomeFixtures';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
+const HOME_ACCENT = '#02BDAB';
 type MainTab = 'offer' | 'inquiry' | 'self' | 'discover';
 type SelfCompareScene = 'sku' | 'merchant' | 'dynamic';
 type FeedFilterKey = 'category' | 'sort' | 'followedMerchant' | 'region' | 'priceRange' | 'goodsType' | 'feedingMethod' | 'tag';
@@ -482,13 +483,6 @@ export function HomeScreenV2({navigation}: Props) {
     () => [
       {key: 'category', label: category, hasSelection: true},
       {key: 'sort', label: getSortLabel(sort), hasSelection: sort !== 'comprehensive'},
-      {
-        key: 'followedMerchant',
-        label: '关注商家',
-        hasSelection: Boolean(filters.followedMerchant),
-        toggle: true,
-        onClear: filters.followedMerchant ? () => setFilters(prev => ({...prev, followedMerchant: false})) : undefined,
-      },
       {
         key: 'region',
         label: filters.region || '地区',
@@ -939,7 +933,7 @@ function TopTab({title, active, onPress}: {title: string; active: boolean; onPre
 function HotSkuPriceStrip({items, onPress, onMore}: {items: HotSkuPriceStat[]; onPress: (item: HotSkuPriceStat) => void; onMore: () => void}) {
   const reasons = [
     {label: '近7日降价', tone: 'down'},
-    {label: '多家报价', tone: 'quote'},
+    {label: '多家报价 · 热度高', tone: 'quote'},
     {label: '关注品替代', tone: 'replace'},
   ] as const;
   return (
@@ -948,7 +942,7 @@ function HotSkuPriceStrip({items, onPress, onMore}: {items: HotSkuPriceStat[]; o
         <Pressable
           key={item.key}
           onPress={() => onPress(item)}
-          style={[styles.hotSkuCell, index > 0 ? styles.hotSkuCellDivider : null]}>
+          style={styles.hotSkuCell}>
           {(() => {
             const reason = reasons[index] ?? {label: '值得关注', tone: 'quote' as const};
             const toneStyle = getHotSkuReasonTone(reason.tone);
@@ -957,11 +951,11 @@ function HotSkuPriceStrip({items, onPress, onMore}: {items: HotSkuPriceStat[]; o
           <Text style={styles.hotSkuTitle} numberOfLines={1}>{item.title}</Text>
           <Text style={styles.hotSkuPrice} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82}>{item.price}</Text>
           <View style={styles.hotSkuTrend}>
-            <MiniTrendChart data={item.trend} width={86} height={18} color={colors.primary} />
+            <MiniTrendChart data={item.trend} width={98} height={18} color={index === 0 ? colors.primary : colors.price} />
           </View>
                 <View style={[styles.hotSkuReasonPill, toneStyle.pill]}>
-                  <HotSkuReasonIcon tone={reason.tone} color={toneStyle.color} />
-                  <Text style={[styles.hotSkuReasonText, {color: toneStyle.color}]} numberOfLines={1}>{reason.label}</Text>
+                  {reason.tone === 'quote' ? null : <HotSkuReasonIcon tone={reason.tone} color={toneStyle.color} />}
+                  <Text style={styles.hotSkuReasonText} numberOfLines={1}>{reason.label}</Text>
                 </View>
               </>
             );
@@ -977,12 +971,12 @@ function HotSkuPriceStrip({items, onPress, onMore}: {items: HotSkuPriceStat[]; o
 
 function getHotSkuReasonTone(tone: 'down' | 'quote' | 'replace') {
   if (tone === 'down') {
-    return {color: '#C94B3F', pill: styles.hotSkuReasonDown};
+    return {color: colors.primary, pill: styles.hotSkuReasonDown};
   }
   if (tone === 'replace') {
     return {color: '#2D6E78', pill: styles.hotSkuReasonReplace};
   }
-  return {color: colors.primary, pill: styles.hotSkuReasonQuote};
+  return {color: '#C94B3F', pill: styles.hotSkuReasonQuote};
 }
 
 function HotSkuReasonIcon({tone, color}: {tone: 'down' | 'quote' | 'replace'; color: string}) {
@@ -1677,7 +1671,6 @@ function SelfCompareHeader({
           <Text style={[styles.selfTableHeadText, styles.selfTablePrice]}>价格区间</Text>
           <Text style={[styles.selfTableHeadText, styles.selfTableCount]}>报盘</Text>
           <Text style={[styles.selfTableHeadText, styles.selfTableCount]}>求购</Text>
-          <Text style={[styles.selfTableHeadText, styles.selfTableChange]}>涨跌</Text>
         </View>
       ) : null}
     </View>
@@ -1724,8 +1717,6 @@ function selfFilterLabel(label: string, selected: string[]) {
 function SelfCompareRow({card, onPress}: {card: HomeCardItem; onPress: () => void}) {
   const factoryNo = normalizeFactoryNoOrNull(card.factoryNo) ?? clean(card.factoryNo);
   const price = priceRange(card.priceMin, card.priceMax).replace(/^¥/, '').replace(/\/kg$/, '');
-  const change = formatPriceChange(card.priceChangeRate ?? card.priceChange);
-  const changeTone = priceChangeTone(card.priceChangeRate ?? card.priceChange);
   return (
     <Pressable onPress={onPress} style={({pressed}) => [styles.selfCompareRow, pressed && styles.pressed]}>
       <View style={styles.selfCompareSku}>
@@ -1738,7 +1729,6 @@ function SelfCompareRow({card, onPress}: {card: HomeCardItem; onPress: () => voi
       <Text style={styles.selfComparePrice} numberOfLines={1}>{price || '-'}{price ? <Text style={styles.selfCompareUnit}>/kg</Text> : null}</Text>
       <Text style={styles.selfCompareNum} numberOfLines={1}>{formatCount(card.todayOfferCount)}</Text>
       <Text style={styles.selfCompareNum} numberOfLines={1}>{formatCount(card.inquiryCount)}</Text>
-      <Text style={[styles.selfCompareChange, changeTone === 'danger' && styles.selfCompareChangeUp]} numberOfLines={1}>{change}</Text>
     </Pressable>
   );
 }
@@ -2657,17 +2647,6 @@ function getRecordId(raw: Record<string, unknown>, keys: string[]) {
   return null;
 }
 
-function formatPriceChange(value?: number | null) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
-  const percentValue = Math.abs(value) <= 1 ? value * 100 : value;
-  const prefix = percentValue > 0 ? '+' : '';
-  return `${prefix}${formatNumber(percentValue)}%`;
-}
-
-function priceChangeTone(value?: number | null): 'danger' | undefined {
-  return typeof value === 'number' && value > 0 ? 'danger' : undefined;
-}
-
 function priceRange(min?: number | null, max?: number | null) {
   if (typeof min !== 'number' && typeof max !== 'number') return '';
   if (typeof min === 'number' && typeof max === 'number' && min !== max) return '¥' + formatNumber(min) + '-' + formatNumber(max) + '/kg';
@@ -2702,8 +2681,8 @@ function formatCount(value?: number | string | null) {
 function SearchIcon() {
   return (
     <Svg width={23} height={23} viewBox="0 0 24 24" fill="none">
-      <Circle cx={11} cy={11} r={7} stroke={colors.primary} strokeWidth={1.8} />
-      <Path d="M20 20L16.2 16.2" stroke={colors.primary} strokeWidth={1.8} strokeLinecap="round" />
+      <Circle cx={11} cy={11} r={7} stroke={HOME_ACCENT} strokeWidth={1.8} />
+      <Path d="M20 20L16.2 16.2" stroke={HOME_ACCENT} strokeWidth={1.8} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -2770,7 +2749,7 @@ function PhoneIcon() {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   safeTop: {backgroundColor: '#FFFFFF'},
-  headerBlock: {backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border},
+  headerBlock: {backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingBottom: 6},
   topLine: {height: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   mainTabs: {flexDirection: 'row', alignItems: 'center', gap: 12},
   topTab: {height: 52, justifyContent: 'center'},
@@ -2780,28 +2759,27 @@ const styles = StyleSheet.create({
   topTabLineActive: {backgroundColor: '#F0602B'},
   askAiButton: {height: 32, minWidth: 96, paddingHorizontal: 10, borderRadius: 16, backgroundColor: colors.primaryLight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4},
   askAiText: {color: colors.primary, fontSize: 12, fontWeight: '700'},
-  searchBox: {height: 46, borderWidth: 1.2, borderColor: colors.primary, borderRadius: 6, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF'},
+  searchBox: {height: 46, borderWidth: 1.2, borderColor: HOME_ACCENT, borderRadius: 6, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF'},
   searchCategory: {height: '100%', width: 74, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5},
   searchCategoryText: {color: colors.text, fontSize: 16, fontWeight: '800'},
   searchDivider: {width: StyleSheet.hairlineWidth, height: 26, backgroundColor: colors.border},
   searchInput: {flex: 1, height: '100%', justifyContent: 'center', paddingHorizontal: 13},
   searchPlaceholder: {color: 'rgba(108,122,119,0.5)', fontSize: 14},
   searchIconButton: {width: 42, height: 42, alignItems: 'center', justifyContent: 'center'},
-  hotSkuStrip: {marginTop: 8, minHeight: 88, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E1EBE8', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E1EBE8', flexDirection: 'row', backgroundColor: '#FFFFFF'},
-  hotSkuItems: {flex: 1, minWidth: 0, flexDirection: 'row'},
-  hotSkuCell: {flex: 1, minWidth: 0, paddingHorizontal: 8, paddingTop: 7, paddingBottom: 6, justifyContent: 'center'},
+  hotSkuStrip: {marginTop: 6, minHeight: 88, paddingLeft: 14, paddingRight: 6, paddingVertical: 6, flexDirection: 'row', backgroundColor: '#FFFFFF'},
+  hotSkuItems: {flex: 1, minWidth: 0, flexDirection: 'row', gap: 6},
+  hotSkuCell: {flex: 1, minWidth: 0, borderRadius: 7, backgroundColor: '#F6F7F8', paddingHorizontal: 4, paddingTop: 7, paddingBottom: 7, justifyContent: 'center', alignItems: 'center'},
   hotSkuMore: {width: 32, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#D9E6E3', alignItems: 'center', justifyContent: 'center'},
-  hotSkuMoreText: {color: colors.primary, fontSize: 34, lineHeight: 38, fontWeight: '500'},
-  hotSkuCellDivider: {borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#E1EBE8'},
-  hotSkuTitle: {color: '#7F8D89', fontSize: 12, lineHeight: 16, fontWeight: '800'},
-  hotSkuPrice: {marginTop: 1, color: colors.text, fontSize: 18, lineHeight: 22, fontWeight: '900', letterSpacing: 0},
-  hotSkuTrend: {marginTop: 3, width: '100%', height: 16, overflow: 'hidden'},
-  hotSkuReasonPill: {marginTop: 2, alignSelf: 'flex-start', height: 17, maxWidth: '100%', paddingHorizontal: 5, borderRadius: 9, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', gap: 3},
-  hotSkuReasonDown: {backgroundColor: '#FFF1EF', borderColor: '#F3C1BA'},
-  hotSkuReasonQuote: {backgroundColor: colors.primaryLight, borderColor: '#B9DED8'},
-  hotSkuReasonReplace: {backgroundColor: '#EEF7FA', borderColor: '#BCDDE4'},
-  hotSkuReasonText: {fontSize: 10, lineHeight: 13, fontWeight: '800'},
-  hotRow: {marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8},
+  hotSkuMoreText: {color: HOME_ACCENT, fontSize: 34, lineHeight: 38, fontWeight: '500'},
+  hotSkuTitle: {width: '100%', color: '#7F8D89', fontSize: 12, lineHeight: 16, fontWeight: '800', textAlign: 'center'},
+  hotSkuPrice: {width: '100%', marginTop: 1, color: colors.text, fontSize: 18, lineHeight: 22, fontWeight: '900', letterSpacing: 0, textAlign: 'center'},
+  hotSkuTrend: {marginTop: 3, width: 98, height: 16, overflow: 'hidden', alignSelf: 'center'},
+  hotSkuReasonPill: {marginTop: 5, alignSelf: 'center', height: 17, maxWidth: '100%', paddingHorizontal: 5, borderRadius: 3, flexDirection: 'row', alignItems: 'center', gap: 3},
+  hotSkuReasonDown: {backgroundColor: '#E9F6F4'},
+  hotSkuReasonQuote: {backgroundColor: '#FBEAE8'},
+  hotSkuReasonReplace: {backgroundColor: '#EDF5F7'},
+  hotSkuReasonText: {color: '#51605D', fontSize: 10, lineHeight: 13, fontWeight: '800'},
+  hotRow: {marginTop: 6, paddingLeft: 14, flexDirection: 'row', alignItems: 'center', gap: 8},
   hotLabel: {color: colors.textSecondary, fontSize: 12},
   hotList: {gap: 8, alignItems: 'center', paddingRight: 10},
   hotChip: {height: 30, minWidth: 72, paddingHorizontal: 12, borderRadius: 3, borderWidth: 1, borderColor: colors.border, backgroundColor: '#FFFFFF', justifyContent: 'center', alignItems: 'center'},
@@ -2912,9 +2890,8 @@ const styles = StyleSheet.create({
   selfTableHead: {height: 34, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FBFA', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E5EEEB'},
   selfTableHeadText: {color: '#879590', fontSize: 11, lineHeight: 15, fontWeight: '700'},
   selfTableSku: {flex: 1.22, minWidth: 0},
-  selfTablePrice: {width: 82, textAlign: 'right'},
+  selfTablePrice: {width: 132, textAlign: 'right'},
   selfTableCount: {width: 44, textAlign: 'right'},
-  selfTableChange: {width: 50, textAlign: 'right'},
   selfMerchantFilterLine: {paddingHorizontal: 12, paddingBottom: 8, flexDirection: 'row', alignItems: 'center'},
   selfMerchantFilterButton: {height: 30, maxWidth: 142, paddingHorizontal: 11, borderRadius: 15, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.primaryLight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5},
   selfMerchantFilterText: {color: colors.primary, fontSize: 12, lineHeight: 16, fontWeight: '800'},
@@ -2944,11 +2921,9 @@ const styles = StyleSheet.create({
   selfCompareSkuLine: {flexDirection: 'row', alignItems: 'baseline', gap: 5, minWidth: 0},
   selfCompareProduct: {color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: '800', flexShrink: 1},
   selfCompareMeta: {color: '#263633', fontSize: 12, lineHeight: 17, fontWeight: '700'},
-  selfComparePrice: {width: 82, color: colors.price, fontSize: 15, lineHeight: 19, fontWeight: '800', textAlign: 'right'},
+  selfComparePrice: {width: 132, color: colors.price, fontSize: 15, lineHeight: 19, fontWeight: '800', textAlign: 'right'},
   selfCompareUnit: {color: colors.textSecondary, fontSize: 10, fontWeight: '600'},
   selfCompareNum: {width: 44, color: colors.text, fontSize: 15, lineHeight: 19, fontWeight: '800', textAlign: 'right'},
-  selfCompareChange: {width: 50, color: colors.primary, fontSize: 13, lineHeight: 18, fontWeight: '800', textAlign: 'right'},
-  selfCompareChangeUp: {color: colors.danger},
   selfMerchantRow: {minHeight: 58, paddingLeft: 12, paddingRight: 12, paddingVertical: 7, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E1EAE7'},
   selfMerchantSkuBlock: {width: 138, minWidth: 0, paddingRight: 8},
   selfMerchantSkuRowBlock: {height: 58, paddingVertical: 8, paddingLeft: 12, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#E1EAE7', backgroundColor: '#FFFFFF'},

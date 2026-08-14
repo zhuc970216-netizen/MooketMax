@@ -37,10 +37,12 @@ const PRICE_WIDTH = 90;
 const PUBLISHER_SKU_WIDTH = 130;
 const PUBLISHER_PRICE_WIDTH = 50;
 const LEFT_WIDTH = FROZEN_PADDING_LEFT + SKU_WIDTH + PRICE_WIDTH + FROZEN_PADDING_RIGHT;
-const TABLE_HEADER_BG = '#F7FAF9';
+const TABLE_HEADER_BG = '#F4F5F6';
 const MIDDLE_WIDTH = 311;
 const GROUP_ROW_HEIGHT = 64;
 const PUBLISHER_ROW_HEIGHT = 38;
+const TABLE_SELECTED_BG = '#F8F9FA';
+const TABLE_PRESSED_BG = '#F3F4F5';
 const GROUP_SHADOW_STEPS = [
   'rgba(24, 39, 34, 0.075)',
   'rgba(24, 39, 34, 0.052)',
@@ -427,13 +429,13 @@ const styles = StyleSheet.create({
   lowPriceBadge: {height: 17, paddingHorizontal: 4, borderRadius: 3, overflow: 'hidden', backgroundColor: '#FFF7D8', color: '#D98200', fontSize: 10, lineHeight: 17, fontWeight: '800'},
   negotiate: {color: colors.primary, fontSize: 13},
   time: {marginTop: 3, color: colors.textMuted, fontSize: 10, lineHeight: 14},
-  highlightedRow: {backgroundColor: '#F3FAF8'},
-  highlightedCell: {backgroundColor: '#F3FAF8'},
+  highlightedRow: {backgroundColor: TABLE_SELECTED_BG},
+  highlightedCell: {backgroundColor: TABLE_SELECTED_BG},
   publisherRow: {minHeight: PUBLISHER_ROW_HEIGHT},
   separatorLayer: {position: 'absolute', left: 0, right: 0, bottom: 0, height: 1, zIndex: 8, overflow: 'visible'},
   separatorLayerFloating: {bottom: -5, height: 6},
   separatorSolid: {height: StyleSheet.hairlineWidth, backgroundColor: '#AEB7C0'},
   groupEndShadow: {height: 5},
   groupEndShadowStep: {height: 1},
-  pressed: {backgroundColor: '#F0F8F6'},
+  pressed: {backgroundColor: TABLE_PRESSED_BG},
 });

@@ -1,7 +1,8 @@
 import React, {useCallback, useRef} from 'react';
 import {Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
-import {colors} from '../../theme/colors';
+
+const FILTER_ACCENT = '#02BDAB';
 
 export type FilterKey =
   | 'sort'
@@ -125,8 +126,8 @@ function FilterChip({
     );
   }
 
-  const borderColor = selected ? colors.primary : 'transparent';
-  const textColor = selected ? colors.primary : '#3C4947';
+  const borderColor = 'transparent';
+  const textColor = selected ? FILTER_ACCENT : '#3C4947';
   const showClear = selected && Boolean(onClear);
 
   if (showClear) {
@@ -140,7 +141,7 @@ function FilterChip({
             <Svg width={10} height={10} viewBox="0 0 10 10">
               <Path
                 d={active ? 'M2.5 6L5 3.5L7.5 6' : 'M2.5 4L5 6.5L7.5 4'}
-                stroke={colors.primary}
+                stroke={FILTER_ACCENT}
                 strokeWidth={1.2}
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -172,7 +173,7 @@ function FilterChip({
         <Svg width={10} height={10} viewBox="0 0 10 10">
           <Path
             d={active ? 'M2.5 6L5 3.5L7.5 6' : 'M2.5 4L5 6.5L7.5 4'}
-            stroke={active || selected ? colors.primary : '#3C4947'}
+            stroke={active || selected ? FILTER_ACCENT : '#3C4947'}
             strokeWidth={1.2}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -201,7 +202,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 2,
     borderWidth: 1,
-    backgroundColor: '#F3F6F5',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -226,7 +227,7 @@ const styles = StyleSheet.create({
   clearDivider: {
     width: StyleSheet.hairlineWidth,
     height: 14,
-    backgroundColor: 'rgba(0,106,97,0.35)',
+    backgroundColor: 'rgba(2,189,171,0.28)',
     marginHorizontal: 2,
   },
   clearButton: {
@@ -236,7 +237,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   clearText: {
-    color: colors.primary,
+    color: FILTER_ACCENT,
     fontSize: 14,
     lineHeight: 16,
     fontWeight: '500',
