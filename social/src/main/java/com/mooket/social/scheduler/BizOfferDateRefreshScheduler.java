@@ -29,15 +29,25 @@ public class BizOfferDateRefreshScheduler {
         refreshOfferDates("midnight");
     }
 
+    @Scheduled(cron = "0 5 0 * * ?", zone = "Asia/Shanghai")
+    public void refreshAfterMidnightBuffer() {
+        refreshOfferDates("midnight-buffer");
+    }
+
+    @Scheduled(cron = "0 */15 * * * ?", zone = "Asia/Shanghai")
+    public void refreshDisplayDatesSelfHealing() {
+        refreshOfferDates("self-heal");
+    }
+
     private void refreshOfferDates(String trigger) {
         try {
-            int staleRows = bizOfferMapper.countRowsWithNonTodayDate();
+            int staleRows = bizOfferMapper.countRowsWithNonTodayPublishDate();
             if (staleRows <= 0) {
-                System.out.println("[BizOfferDateRefreshScheduler] " + trigger + " skip, all offer dates are already today");
+                System.out.println("[BizOfferDateRefreshScheduler] " + trigger + " skip, all offer publish dates are already today");
                 return;
             }
-            int updatedRows = bizOfferMapper.refreshAllOfferDatesToToday();
-            System.out.println("[BizOfferDateRefreshScheduler] " + trigger + " refreshed biz_offer dates to today, staleRows="
+            int updatedRows = bizOfferMapper.refreshAllOfferPublishDatesToToday();
+            System.out.println("[BizOfferDateRefreshScheduler] " + trigger + " refreshed biz_offer publish dates to today, staleRows="
                     + staleRows + ", updatedRows=" + updatedRows);
         } catch (Exception e) {
             System.err.println("[BizOfferDateRefreshScheduler] " + trigger + " refresh failed: " + e.getMessage());

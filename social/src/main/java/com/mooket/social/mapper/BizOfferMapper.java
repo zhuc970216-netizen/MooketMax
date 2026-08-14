@@ -534,6 +534,12 @@ public interface BizOfferMapper extends BaseMapper<BizOffer> {
     @Update({"UPDATE biz_offer SET publish_time = CURRENT_DATE + publish_time::time, data_date = CURRENT_DATE WHERE data_date IS DISTINCT FROM CURRENT_DATE OR publish_time::date IS DISTINCT FROM CURRENT_DATE"})
     int refreshAllOfferDatesToToday();
 
+    @Select({"SELECT COUNT(*) FROM biz_offer WHERE publish_time::date IS DISTINCT FROM CURRENT_DATE"})
+    int countRowsWithNonTodayPublishDate();
+
+    @Update({"UPDATE biz_offer SET publish_time = CURRENT_DATE + publish_time::time WHERE publish_time::date IS DISTINCT FROM CURRENT_DATE"})
+    int refreshAllOfferPublishDatesToToday();
+
     @Insert({"INSERT INTO biz_offer (source_business_id, offer_original_text, category, product_id, product_name, country, factory_no, factory_id, brand_id, merchant_id, contact_phone, user_id, user_nickname, price, price_max, weight, offer_type, goods_type, goods_location, tags, fat_ratio, feeding_type, cattle_breed, remark, publish_time, data_date, status, create_time) VALUES (#{sourceBusinessId}, #{offerOriginalText}, #{category}, #{productId}, #{productName}, #{country}, #{factoryNo}, #{factoryId}, #{brandId}, #{merchantId}, #{contactPhone}, #{userId}, #{userNickname}, #{price}, #{priceMax}, #{weight}, #{offerType}, #{goodsType}, #{goodsLocation}, #{tags}, #{fatRatio}, #{feedingType}, #{cattleBreed}, #{remark}, #{publishTime}, #{dataDate}, #{status}, #{createTime}) ON CONFLICT (source_business_id) DO UPDATE SET offer_original_text = EXCLUDED.offer_original_text, category = EXCLUDED.category, product_id = EXCLUDED.product_id, product_name = EXCLUDED.product_name, country = EXCLUDED.country, factory_no = EXCLUDED.factory_no, factory_id = EXCLUDED.factory_id, brand_id = EXCLUDED.brand_id, merchant_id = EXCLUDED.merchant_id, contact_phone = EXCLUDED.contact_phone, user_id = EXCLUDED.user_id, user_nickname = EXCLUDED.user_nickname, price = EXCLUDED.price, price_max = EXCLUDED.price_max, weight = EXCLUDED.weight, offer_type = EXCLUDED.offer_type, goods_type = EXCLUDED.goods_type, goods_location = EXCLUDED.goods_location, tags = EXCLUDED.tags, fat_ratio = EXCLUDED.fat_ratio, feeding_type = EXCLUDED.feeding_type, cattle_breed = EXCLUDED.cattle_breed, remark = EXCLUDED.remark, publish_time = EXCLUDED.publish_time, data_date = EXCLUDED.data_date, status = EXCLUDED.status"})
     void upsert(BizOffer offer);
 

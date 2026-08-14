@@ -77,11 +77,11 @@ public class AdminController {
     @PostMapping("/refresh-biz-offer-dates")
     public ApiResponse<String> refreshBizOfferDates() {
         try {
-            int staleRows = bizOfferMapper.countRowsWithNonTodayDate();
+            int staleRows = bizOfferMapper.countRowsWithNonTodayPublishDate();
             if (staleRows <= 0) {
                 return ApiResponse.success("biz_offer 日期已是今天，无需刷新");
             }
-            int updatedRows = bizOfferMapper.refreshAllOfferDatesToToday();
+            int updatedRows = bizOfferMapper.refreshAllOfferPublishDatesToToday();
             return ApiResponse.success("biz_offer 日期刷新完成，原待刷新 " + staleRows + " 条，实际更新 " + updatedRows + " 条");
         } catch (Exception e) {
             return ApiResponse.error("刷新 biz_offer 日期失败: " + e.getMessage());
