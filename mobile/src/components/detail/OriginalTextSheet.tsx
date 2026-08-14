@@ -54,14 +54,14 @@ export function OriginalTextSheet({
   }, [analysis.bestSegmentIndex, segmentLayouts, visible]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={[styles.sheet, {paddingBottom: Math.max(insets.bottom, 24)}]}>
           <View style={styles.handle} />
           <View style={styles.titleRow}>
             <Text style={styles.title}>{title}</Text>
-            <Pressable hitSlop={8} onPress={onClose}>
+            <Pressable hitSlop={12} onPress={onClose} style={styles.closeButton}>
               <Text style={styles.close}>关闭</Text>
             </Pressable>
           </View>
@@ -164,6 +164,12 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 13,
     fontWeight: '600',
+  },
+  closeButton: {
+    minWidth: 56,
+    height: 36,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   scroll: {
     flexGrow: 0,

@@ -24,7 +24,7 @@ import {FilterPanelSheet, MultiSelectChips} from '../components/detail/FilterPan
 import {OriginalTextSheet} from '../components/detail/OriginalTextSheet';
 import {MiniTrendChart} from '../components/home/MiniTrendChart';
 import {OfferActionSheet} from '../components/home/OfferActionSheet';
-import {OfferFrozenTable, OfferFrozenTableHeader} from '../components/home/OfferFrozenTable';
+import {OfferFrozenTable, OfferFrozenTableHeader, useOfferTableScrollController} from '../components/home/OfferFrozenTable';
 import {DEFAULT_CATEGORY} from '../config/env';
 import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
@@ -135,6 +135,7 @@ const sortOptions: Array<{label: string; value: SortKind}> = [
 ];
 export function HomeScreenV2({navigation}: Props) {
   const insets = useSafeAreaInsets();
+  const offerTableScrollController = useOfferTableScrollController();
   const [activeTab, setActiveTab] = useState<MainTab>('offer');
   const [category, setCategory] = useState(DEFAULT_CATEGORY);
   const [hotSearches, setHotSearches] = useState<HotSearchItem[]>([]);
@@ -652,7 +653,7 @@ export function HomeScreenV2({navigation}: Props) {
     if (action === 'phone') {
       dialPhone(phone);
     } else {
-      copyToClipboard(phone, '已复制手机号').catch(() => undefined);
+      copyToClipboard(phone, '已复制手机号，可去添加微信').catch(() => undefined);
     }
   }
 
@@ -679,6 +680,31 @@ export function HomeScreenV2({navigation}: Props) {
     });
   }
 
+  function openOfferChat(item: OfferFeedItem) {
+    setSelectedOffer(null);
+    navigation.navigate('Chat', {
+      category,
+      merchantId: item.merchantId,
+      merchantName: item.merchantShortName || item.merchantName || item.userNickname || null,
+      contactPhone: item.contactPhone || null,
+      offer: {
+        offerId: item.offerId ?? null,
+        productName: item.productName ?? null,
+        country: item.country ?? null,
+        factoryNo: item.factoryNo ?? null,
+        price: item.price ?? null,
+        priceMax: item.priceMax ?? null,
+        weight: item.weight ?? null,
+        goodsLocation: item.goodsLocation ?? null,
+        region: item.region ?? null,
+        tags: item.tags ?? null,
+        feedingType: item.feedingType ?? null,
+        goodsType: item.goodsType ?? null,
+        publishTime: item.publishTime ?? null,
+      },
+    });
+  }
+
   const stickyHeader = (
     <View style={styles.headerBlock}>
       <View style={styles.topLine}>
@@ -688,10 +714,6 @@ export function HomeScreenV2({navigation}: Props) {
           <TopTab title="自选" active={activeTab === 'self'} onPress={() => handleMainTabPress('self')} />
           <TopTab title="发现" active={activeTab === 'discover'} onPress={() => handleMainTabPress('discover')} />
         </View>
-        <Pressable onPress={() => Alert.alert('牧集问数', 'AI 智能问答入口建设中')} hitSlop={8} style={styles.askAiButton}>
-          <AskAiIcon />
-          <Text style={styles.askAiText}>牧集问数</Text>
-        </Pressable>
       </View>
 
       {activeTab !== 'self' && activeTab !== 'discover' ? (
@@ -819,7 +841,7 @@ export function HomeScreenV2({navigation}: Props) {
                 return (
                   <View style={styles.filterBlock}>
                     <FilterBar filters={filterDefs} active={activeFilter as FilterKey | null} onPress={handleFilterPress} onBottomLayout={setFilterPanelTop} />
-                    <OfferFrozenTableHeader />
+                    <OfferFrozenTableHeader scrollController={offerTableScrollController} />
                   </View>
                 );
               }
@@ -829,6 +851,7 @@ export function HomeScreenV2({navigation}: Props) {
                     groups={groups}
                     expandedKeys={expandedKeys}
                     renderHeader={false}
+                    scrollController={offerTableScrollController}
                     onToggle={key => {
                       setExpandedKeys(prev => {
                         const next = new Set(prev);
@@ -869,12 +892,6 @@ export function HomeScreenV2({navigation}: Props) {
         </>
       )}
 
-      <OriginalTextSheet
-        visible={Boolean(originalText)}
-        text={originalText?.text ?? ''}
-        keywords={originalText?.keywords ?? []}
-        onClose={() => setOriginalText(null)}
-      />
       <OfferActionSheet
         visible={Boolean(selectedOffer)}
         item={selectedOffer}
@@ -884,12 +901,17 @@ export function HomeScreenV2({navigation}: Props) {
         onPhone={() => selectedOffer && handleContact(selectedOffer, 'phone')}
         onCopyPhone={() => selectedOffer && handleContact(selectedOffer, 'wechat')}
         onIntent={() => selectedOffer && handleToggleIntent(selectedOffer)}
+        onOnlineChat={() => selectedOffer && openOfferChat(selectedOffer)}
         onOriginal={() => {
           if (!selectedOffer) return;
-          const item = selectedOffer;
-          setSelectedOffer(null);
-          showOfferOriginal(item);
+          showOfferOriginal(selectedOffer);
         }}
+      />
+      <OriginalTextSheet
+        visible={Boolean(originalText)}
+        text={originalText?.text ?? ''}
+        keywords={originalText?.keywords ?? []}
+        onClose={() => setOriginalText(null)}
       />
       <SelfEditSheet
         visible={selfEditVisible}
@@ -1965,7 +1987,7 @@ function FilterSheets({
 }) {
   return (
     <>
-      <FilterPanelSheet visible={activeFilter === 'sort'} topOffset={topOffset} title="鎺掑簭鏂瑰紡" showActions={false} onClose={onClose}>
+      <FilterPanelSheet visible={activeFilter === 'sort'} topOffset={topOffset} title="排序方式" showActions={false} onClose={onClose}>
         <View style={styles.sortOptions}>
           {sortOptions.map(option => (
             <Pressable
@@ -2690,16 +2712,6 @@ function ChevronDownIcon() {
   return (
     <Svg width={12} height={12} viewBox="0 0 12 12" fill="none">
       <Path d="M3 4.5L6 7.5L9 4.5" stroke="#171D1C" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
-  );
-}
-
-function AskAiIcon() {
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path d="M3.1 6.7C3.1 4.3 5.2 2.5 8 2.5C10.8 2.5 12.9 4.3 12.9 6.7C12.9 9.1 10.8 10.9 8 10.9C7.4 10.9 6.8 10.8 6.3 10.6L3.8 12.6L4.3 9.6C3.5 8.8 3.1 7.8 3.1 6.7Z" stroke={colors.primary} strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" />
-      <Path d="M6.2 6.8H6.25M8 6.8H8.05M9.8 6.8H9.85" stroke={colors.primary} strokeWidth={1.8} strokeLinecap="round" />
-      <Path d="M11.5 2L11.9 1.1L12.3 2L13.2 2.4L12.3 2.8L11.9 3.7L11.5 2.8L10.6 2.4L11.5 2Z" fill={colors.primary} />
     </Svg>
   );
 }

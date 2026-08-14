@@ -24,6 +24,7 @@ const getMerchantSearchResultsScreen = () => require('../screens/MerchantSearchR
 const getOfferFeedScreen = () => require('../screens/OfferFeedScreen').OfferFeedScreen;
 const getPlateFollowScreen = () => require('../screens/PlateFollowScreen').PlateFollowScreen;
 const getHomeCardsScreen = () => require('../screens/HomeCardsScreen').HomeCardsScreen;
+const getChatScreen = () => require('../screens/ChatScreen').ChatScreen;
 const getMerchantScreen = () => require('../screens/MerchantScreen').MerchantScreen;
 const getProductScreen = () => require('../screens/ProductScreen').ProductScreen;
 const getCountryScreen = () => require('../screens/CountryScreen').CountryScreen;
@@ -145,6 +146,7 @@ export function AppNavigator() {
               <Stack.Screen name="OfferFeed" getComponent={getOfferFeedScreen} options={detailScreenOptions} />
               <Stack.Screen name="PlateFollow" getComponent={getPlateFollowScreen} options={{headerShown: false}} />
               <Stack.Screen name="HomeCards" getComponent={getHomeCardsScreen} options={{headerShown: false}} />
+              <Stack.Screen name="Chat" getComponent={getChatScreen} options={{headerShown: false}} />
               <Stack.Screen name="Merchant" getComponent={getMerchantScreen} options={{headerShown: false}} />
               <Stack.Screen name="Product" getComponent={getProductScreen} options={detailScreenOptions} />
               <Stack.Screen name="Country" getComponent={getCountryScreen} options={detailScreenOptions} />

@@ -57,6 +57,28 @@ export type RootStackParamList = {
   };
   PlateFollow: {initialTab?: 'intent' | 'recent'; category?: string} | undefined;
   HomeCards: {category?: string} | undefined;
+  Chat: {
+    conversationId?: string;
+    category: string;
+    merchantId?: number | string | null;
+    merchantName?: string | null;
+    contactPhone?: string | null;
+    offer: {
+      offerId?: number | null;
+      productName?: string | null;
+      country?: string | null;
+      factoryNo?: string | null;
+      price?: number | null;
+      priceMax?: number | null;
+      weight?: string | null;
+      goodsLocation?: string | null;
+      region?: string | null;
+      tags?: string | null;
+      feedingType?: string | null;
+      goodsType?: string | null;
+      publishTime?: string | null;
+    };
+  };
   Merchant: {
     merchantId: number | string;
     category: string;

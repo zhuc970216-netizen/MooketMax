@@ -16,7 +16,7 @@ type Props = {
 };
 
 /**
- * 8 绉嶅崱鐗囩被鍨嬪垎鍙戯細涓庡師 Android 璁捐 1:1 瀵瑰簲
+ * 8 种卡片类型分发：与原 Android 设计 1:1 对应
  */
 export function HomeCardSwitcher({card, onPress, onLongPress}: Props) {
   switch (card.cardType) {
@@ -37,7 +37,7 @@ export function HomeCardSwitcher({card, onPress, onLongPress}: Props) {
     case 'brandProduct':
       return <BrandProductCard card={card} onPress={onPress} onLongPress={onLongPress} />;
     default:
-      // 鍏滃簳锛氫娇鐢?product 鍗℃牱寮?
+      // 兜底：使用 product 卡片样式
       return <ProductCard card={card} onPress={onPress} onLongPress={onLongPress} />;
   }
 }
