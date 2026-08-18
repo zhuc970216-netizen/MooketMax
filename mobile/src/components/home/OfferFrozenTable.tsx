@@ -15,6 +15,8 @@ export type OfferTableGroup = {
   items: OfferFeedItem[];
 };
 
+type TableMode = 'offer' | 'inquiry';
+
 type Props = {
   groups: OfferTableGroup[];
   expandedKeys: Set<string>;
@@ -22,6 +24,7 @@ type Props = {
   onPublisherPress: (item: OfferFeedItem) => void;
   renderHeader?: boolean;
   scrollController?: OfferTableScrollController;
+  mode?: TableMode;
 };
 
 export type OfferTableScrollController = {
@@ -37,6 +40,7 @@ const PRICE_WIDTH = 90;
 const PUBLISHER_SKU_WIDTH = 130;
 const PUBLISHER_PRICE_WIDTH = 50;
 const LEFT_WIDTH = FROZEN_PADDING_LEFT + SKU_WIDTH + PRICE_WIDTH + FROZEN_PADDING_RIGHT;
+const LEFT_WIDTH_INQUIRY = FROZEN_PADDING_LEFT + SKU_WIDTH + FROZEN_PADDING_RIGHT;
 const TABLE_HEADER_BG = '#F4F5F6';
 const MIDDLE_WIDTH = 311;
 const GROUP_ROW_HEIGHT = 64;
@@ -56,6 +60,22 @@ const columns = [
   {key: 'feeding', title: '饲养方式', width: 88},
   {key: 'weight', title: '数量', width: 82},
 ] as const;
+const inquiryColumns = [
+  {key: 'tags', title: '标签', width: 88},
+  {key: 'weight', title: '数量', width: 76},
+  {key: 'price', title: '求购价', width: 86},
+  {key: 'merchant', title: '商家', width: 110},
+  {key: 'location', title: '货物地', width: 56},
+] as const;
+const INQUIRY_MIDDLE_WIDTH = inquiryColumns.reduce((sum, column) => sum + column.width, 0);
+
+function getTableColumns(mode: TableMode) {
+  return mode === 'inquiry' ? inquiryColumns : columns;
+}
+
+function getScrollWidth(mode: TableMode) {
+  return mode === 'inquiry' ? INQUIRY_MIDDLE_WIDTH : MIDDLE_WIDTH;
+}
 
 export function getOfferTableValues(item?: OfferFeedItem) {
   return [
@@ -111,9 +131,10 @@ export function useOfferTableScrollController(): OfferTableScrollController {
   );
 }
 
-export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPress, renderHeader = true, scrollController}: Props) {
+export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPress, renderHeader = true, scrollController, mode = 'offer'}: Props) {
   const fallbackScrollController = useOfferTableScrollController();
   const controller = scrollController ?? fallbackScrollController;
+  const inquiry = mode === 'inquiry';
   const rows: TableDataRow[] = [];
   groups.forEach(group => {
     const latest = group.items[0];
@@ -121,7 +142,7 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
     rows.push({
       rowKey: `group-${group.key}`,
       leftTitle: group.productName,
-      leftSkuMeta: [group.country, group.factoryNo].filter(Boolean).join(''),
+      leftSkuMeta: buildSkuMeta(group.country, group.factoryNo, inquiry),
       leftMeta: formatMerchantName(group.merchantName),
       item: latest,
       price: formatDisplayPrice(group.price),
@@ -151,16 +172,16 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
 
   return (
     <View style={styles.table}>
-      {renderHeader ? <TableHeader {...controller} /> : null}
+      {renderHeader ? <TableHeader mode={mode} {...controller} /> : null}
       <View style={styles.bodyTable}>
-        <View style={styles.leftColumn}>
+        <View style={[styles.leftColumn, inquiry && styles.leftColumnInquiry]}>
           {rows.map(row => (
-            <TableLeftCell key={row.rowKey} row={row} />
+            <TableLeftCell key={row.rowKey} row={row} mode={mode} />
           ))}
         </View>
-        <MiddleScroll rowKey="body" body {...controller}>
+        <MiddleScroll rowKey="body" body mode={mode} {...controller}>
           {rows.map(row => (
-            <TableMiddleRow key={row.rowKey} row={row} />
+            <TableMiddleRow key={row.rowKey} row={row} mode={mode} />
           ))}
         </MiddleScroll>
       </View>
@@ -168,20 +189,23 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
   );
 }
 
-export function OfferFrozenTableHeader({scrollController}: {scrollController?: OfferTableScrollController}) {
+export function OfferFrozenTableHeader({scrollController, mode = 'offer'}: {scrollController?: OfferTableScrollController; mode?: TableMode}) {
   const fallbackScrollController = useOfferTableScrollController();
-  return <TableHeader {...(scrollController ?? fallbackScrollController)} />;
+  return <TableHeader mode={mode} {...(scrollController ?? fallbackScrollController)} />;
 }
 
-function TableHeader({register, onSync, onBeginScroll}: SyncProps) {
+function TableHeader({register, onSync, onBeginScroll, mode = 'offer'}: SyncProps & {mode?: TableMode}) {
+  const inquiry = mode === 'inquiry';
   return (
     <View style={[styles.row, styles.header]}>
-      <View style={styles.headerLeftFrozen}>
-        <View style={[styles.leftSku, styles.headerColumn]}><Text style={[styles.headerText, styles.leftText]}>SKU</Text></View>
-        <View style={[styles.leftPrice, styles.headerColumn, styles.headerPriceColumn]}><Text style={[styles.headerText, styles.rightText]}>价格·商家</Text></View>
+      <View style={[styles.headerLeftFrozen, inquiry && styles.headerLeftFrozenInquiry]}>
+        <View style={[styles.leftSku, inquiry && styles.leftSkuInquiry, styles.headerColumn]}><Text style={[styles.headerText, styles.leftText]}>SKU</Text></View>
+        {!inquiry ? (
+          <View style={[styles.leftPrice, styles.headerColumn, styles.headerPriceColumn]}><Text style={[styles.headerText, styles.rightText]}>价格·商家</Text></View>
+        ) : null}
       </View>
-      <MiddleScroll rowKey="header" register={register} onSync={onSync} onBeginScroll={onBeginScroll}>
-        {columns.map(column => (
+      <MiddleScroll rowKey="header" register={register} onSync={onSync} onBeginScroll={onBeginScroll} mode={mode}>
+        {getTableColumns(mode).map(column => (
           <View key={column.key} style={[styles.headerMiddleCell, {width: column.width}]}>
             <Text style={[styles.headerText, styles.centerText]}>{column.title}</Text>
           </View>
@@ -213,12 +237,13 @@ type TableDataRow = {
   onPress: () => void;
 };
 
-function TableLeftCell({row}: {row: TableDataRow}) {
+function TableLeftCell({row, mode = 'offer'}: {row: TableDataRow; mode?: TableMode}) {
+  const inquiry = mode === 'inquiry';
   const priceBadge = getPriceBadge(row.item);
   return (
     <View style={[styles.bodyRow, row.highlighted && styles.highlightedRow, row.publisher && styles.publisherRow]}>
-      <Pressable onPress={row.onPress} style={({pressed}) => [styles.leftFrozen, row.publisher && styles.publisherLeftFrozen, row.highlighted && styles.highlightedCell, pressed && styles.pressed]}>
-        <View style={[styles.leftSku, row.publisher && styles.publisherLeftSku]}>
+      <Pressable onPress={row.onPress} style={({pressed}) => [styles.leftFrozen, inquiry && styles.leftFrozenInquiry, row.publisher && styles.publisherLeftFrozen, row.highlighted && styles.highlightedCell, pressed && styles.pressed]}>
+        <View style={[styles.leftSku, !inquiry && row.publisher && styles.publisherLeftSku, inquiry && styles.leftSkuInquiry]}>
           <View style={styles.leftTitleLine}>
             {row.publisher ? (
               <View style={styles.publisherMiniIcon}>
@@ -234,17 +259,19 @@ function TableLeftCell({row}: {row: TableDataRow}) {
             <Text style={styles.leftSkuMeta} numberOfLines={1}>{row.leftSkuMeta || '-'}</Text>
           ) : null}
         </View>
-        <View style={[styles.leftPrice, row.publisher && styles.publisherLeftPrice]}>
-          <View style={styles.priceLine}>
-            {priceBadge ? <Text style={styles.lowPriceBadge}>{priceBadge}</Text> : null}
-            <Text style={[styles.price, priceBadge && styles.priceWithBadge, row.price === '协商' && styles.negotiate]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{row.price}</Text>
-          </View>
-          {!row.publisher ? (
-            <View style={styles.priceMetaLine}>
-              <Text style={styles.priceMeta} numberOfLines={1}>{row.leftMeta || '-'}</Text>
+        {!inquiry ? (
+          <View style={[styles.leftPrice, row.publisher && styles.publisherLeftPrice]}>
+            <View style={styles.priceLine}>
+              {priceBadge ? <Text style={styles.lowPriceBadge}>{priceBadge}</Text> : null}
+              <Text style={[styles.price, priceBadge && styles.priceWithBadge, row.price === '协商' && styles.negotiate]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{row.price}</Text>
             </View>
-          ) : null}
-        </View>
+            {!row.publisher ? (
+              <View style={styles.priceMetaLine}>
+                <Text style={styles.priceMeta} numberOfLines={1}>{row.leftMeta || '-'}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         <View style={styles.frozenShadow} pointerEvents="none">
           <View style={styles.frozenShadowStrong} />
           <View style={styles.frozenShadowMid} />
@@ -256,13 +283,29 @@ function TableLeftCell({row}: {row: TableDataRow}) {
   );
 }
 
-function TableMiddleRow({row}: {row: TableDataRow}) {
-  const values = getOfferTableValues(row.item);
+function getInquiryTableValues(row: TableDataRow) {
+  return [
+    clean(row.item?.tags) || '-',
+    clean(row.item?.weight) || '-',
+    row.price || '协商',
+    row.leftMeta || '-',
+    formatLocation(clean(row.item?.goodsLocation) || clean(row.item?.region)),
+  ];
+}
+
+function TableMiddleRow({row, mode = 'offer'}: {row: TableDataRow; mode?: TableMode}) {
+  const inquiry = mode === 'inquiry';
+  const scrollColumns = getTableColumns(mode);
+  const values = inquiry ? getInquiryTableValues(row) : getOfferTableValues(row.item);
   return (
-    <View style={[styles.bodyMiddleRow, row.highlighted && styles.highlightedRow, row.publisher && styles.publisherRow]}>
-      {columns.map((column, index) => (
+    <View style={[styles.bodyMiddleRow, {width: getScrollWidth(mode)}, row.highlighted && styles.highlightedRow, row.publisher && styles.publisherRow]}>
+      {scrollColumns.map((column, index) => (
         <Pressable key={column.key} onPress={row.onPress} style={({pressed}) => [styles.middleCell, row.highlighted && styles.highlightedCell, pressed && styles.pressed, {width: column.width}]}>
-          <Text style={styles.middleText} numberOfLines={1}>{values[index]}</Text>
+          <Text
+            style={inquiry && column.key === 'price' ? [styles.middlePriceText, values[index] === '协商' && styles.middleText] : styles.middleText}
+            numberOfLines={1}>
+            {values[index]}
+          </Text>
         </Pressable>
       ))}
       <RowSeparator type={row.separator ?? 'solid'} shadow={row.separatorShadow || row.groupEndShadow} />
@@ -297,7 +340,7 @@ function RowSeparator({type, shadow = false}: {type: 'solid' | 'dashed'; shadow?
   );
 }
 
-function MiddleScroll({rowKey, body = false, register, onSync, onBeginScroll, children}: SyncProps & {rowKey: string; body?: boolean; children: React.ReactNode}) {
+function MiddleScroll({rowKey, body = false, mode = 'offer', register, onSync, onBeginScroll, children}: SyncProps & {rowKey: string; body?: boolean; mode?: TableMode; children: React.ReactNode}) {
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => onSync(rowKey, event.nativeEvent.contentOffset.x);
   return (
     <ScrollView
@@ -310,7 +353,7 @@ function MiddleScroll({rowKey, body = false, register, onSync, onBeginScroll, ch
       onMomentumScrollBegin={() => onBeginScroll(rowKey)}
       onScroll={handleScroll}
       style={styles.middleViewport}
-      contentContainerStyle={[body ? styles.bodyMiddleContent : styles.middleContent, {width: MIDDLE_WIDTH}]}>
+      contentContainerStyle={[body ? styles.bodyMiddleContent : styles.middleContent, {width: getScrollWidth(mode)}]}>
       {children}
     </ScrollView>
   );
@@ -332,6 +375,15 @@ function formatMerchantName(value?: string | null) {
 
 function formatDisplayPrice(value: string) {
   return value.replace(/协商报价/g, '协商').replace(/¥/g, '').replace(/\/kg/g, '').replace(/-/g, '~');
+}
+
+function buildSkuMeta(country: string, factoryNo: string, inquiry: boolean) {
+  const c = clean(country);
+  const f = clean(factoryNo);
+  if (!inquiry) return [c, f].filter(Boolean).join('');
+  if (c && f) return c + f;
+  if (c) return c + ' 厂号不限';
+  return '国家厂号不限';
 }
 
 function formatLocation(value: string) {
@@ -385,8 +437,9 @@ const styles = StyleSheet.create({
   row: {minHeight: GROUP_ROW_HEIGHT, flexDirection: 'row', backgroundColor: '#FFFFFF'},
   bodyTable: {flexDirection: 'row', backgroundColor: '#FFFFFF'},
   leftColumn: {width: LEFT_WIDTH, backgroundColor: '#FFFFFF', zIndex: 3},
+  leftColumnInquiry: {width: LEFT_WIDTH_INQUIRY},
   bodyRow: {minHeight: GROUP_ROW_HEIGHT, backgroundColor: '#FFFFFF'},
-  bodyMiddleRow: {width: MIDDLE_WIDTH, minHeight: GROUP_ROW_HEIGHT, flexDirection: 'row', backgroundColor: '#FFFFFF'},
+  bodyMiddleRow: {minHeight: GROUP_ROW_HEIGHT, flexDirection: 'row', backgroundColor: '#FFFFFF'},
   header: {minHeight: 34, alignItems: 'center', backgroundColor: TABLE_HEADER_BG, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#DFE8E6', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#B8C0C9'},
   headerLeftFrozen: {width: LEFT_WIDTH, height: 34, paddingLeft: FROZEN_PADDING_LEFT, paddingRight: FROZEN_PADDING_RIGHT, flexDirection: 'row', alignItems: 'center', backgroundColor: TABLE_HEADER_BG, zIndex: 2},
   headerColumn: {alignItems: 'flex-start', justifyContent: 'center'},
@@ -396,13 +449,16 @@ const styles = StyleSheet.create({
   leftText: {textAlign: 'left'},
   rightText: {textAlign: 'right'},
   headerPriceColumn: {alignItems: 'flex-end'},
+  headerLeftFrozenInquiry: {width: LEFT_WIDTH_INQUIRY},
   leftFrozen: {width: LEFT_WIDTH, minHeight: GROUP_ROW_HEIGHT, paddingLeft: FROZEN_PADDING_LEFT, paddingRight: FROZEN_PADDING_RIGHT, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', zIndex: 2},
+  leftFrozenInquiry: {width: LEFT_WIDTH_INQUIRY},
   publisherLeftFrozen: {minHeight: PUBLISHER_ROW_HEIGHT},
   frozenShadow: {position: 'absolute', top: 0, right: -9, bottom: 0, width: 9, flexDirection: 'row', zIndex: 4},
   frozenShadowStrong: {width: 2, backgroundColor: 'rgba(0,0,0,0.085)'},
   frozenShadowMid: {width: 3, backgroundColor: 'rgba(0,0,0,0.038)'},
   frozenShadowSoft: {width: 4, backgroundColor: 'rgba(0,0,0,0.012)'},
   leftSku: {width: SKU_WIDTH, minWidth: 0, justifyContent: 'center'},
+  leftSkuInquiry: {width: '100%', flex: 1},
   publisherLeftSku: {width: PUBLISHER_SKU_WIDTH},
   leftPrice: {width: PRICE_WIDTH, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center'},
   publisherLeftPrice: {width: PUBLISHER_PRICE_WIDTH},
@@ -423,6 +479,7 @@ const styles = StyleSheet.create({
   bodyMiddleContent: {flexDirection: 'column', alignItems: 'stretch', backgroundColor: '#FFFFFF'},
   middleCell: {paddingHorizontal: 8, justifyContent: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#EDF2F1'},
   middleText: {color: colors.textSecondary, fontSize: 12, lineHeight: 17, textAlign: 'left'},
+  middlePriceText: {color: colors.price, fontSize: 12, lineHeight: 17, fontWeight: '800', textAlign: 'left'},
   priceLine: {width: '100%', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-start', gap: 3},
   price: {flexShrink: 1, minWidth: 0, color: colors.price, fontSize: 14, lineHeight: 19, fontWeight: '800', textAlign: 'right'},
   priceWithBadge: {maxWidth: 36},

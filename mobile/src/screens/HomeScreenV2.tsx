@@ -141,6 +141,7 @@ export function HomeScreenV2({navigation}: Props) {
   const insets = useSafeAreaInsets();
   const offerTableScrollController = useOfferTableScrollController();
   const [activeTab, setActiveTab] = useState<MainTab>('offer');
+  const feedListData = useMemo(() => [{key: 'header'}, {key: 'intro'}, {key: 'filters'}, {key: 'offer-table'}], []);
   const [category, setCategory] = useState(DEFAULT_CATEGORY);
   const [hotSearches, setHotSearches] = useState<HotSearchItem[]>([]);
   const [hotSkus, setHotSkus] = useState<HomeHotSku[]>([]);
@@ -162,6 +163,9 @@ export function HomeScreenV2({navigation}: Props) {
   const [intentKeys, setIntentKeys] = useState<Set<string>>(new Set());
   const [followedMerchantKeys, setFollowedMerchantKeys] = useState<Set<string>>(new Set());
   const [selectedOffer, setSelectedOffer] = useState<OfferFeedItem | null>(null);
+  const feedListRef = useRef<FlatList>(null);
+  const showBackToTopRef = useRef(false);
+  const [showBackToTop, setShowBackToTop] = useState(false);
   const [selfCompareScene, setSelfCompareScene] = useState<SelfCompareScene>('sku');
   const [selfCompareFilter, setSelfCompareFilter] = useState<SelfCompareFilter>({
     country: [],
@@ -834,19 +838,30 @@ export function HomeScreenV2({navigation}: Props) {
           onPress={item => openHotSku({...item, title: `${item.factoryNo} ${item.productName}`, price: priceRange(item.priceMin, item.priceMax), latestTime: 0, trend: item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value))})}
         />
       ) : (
-        <>
-          {stickyHeader}
+        <View style={styles.feedContainer}>
           <FlatList
-            data={[{key: 'intro'}, {key: 'filters'}, {key: 'offer-table'}]}
+            ref={feedListRef}
+            data={feedListData}
             keyExtractor={item => item.key}
-            stickyHeaderIndices={[1]}
+            stickyHeaderIndices={[2]}
+            onScroll={(e) => {
+              const offsetY = e.nativeEvent.contentOffset.y;
+              const layoutHeight = e.nativeEvent.layoutMeasurement.height;
+              const shouldShow = offsetY > layoutHeight;
+              if (shouldShow !== showBackToTopRef.current) {
+                showBackToTopRef.current = shouldShow;
+                setShowBackToTop(shouldShow);
+              }
+            }}
+            scrollEventThrottle={16}
             renderItem={({item}) => {
+              if (item.key === 'header') return stickyHeader;
               if (item.key === 'intro') return offerIntroHeader;
               if (item.key === 'filters') {
                 return (
                   <View style={styles.filterBlock}>
                     <FilterBar filters={filterDefs} active={activeFilter as FilterKey | null} onPress={handleFilterPress} onBottomLayout={setFilterPanelTop} />
-                    <OfferFrozenTableHeader scrollController={offerTableScrollController} />
+                    <OfferFrozenTableHeader scrollController={offerTableScrollController} mode={feedType} />
                   </View>
                 );
               }
@@ -857,6 +872,7 @@ export function HomeScreenV2({navigation}: Props) {
                     expandedKeys={expandedKeys}
                     renderHeader={false}
                     scrollController={offerTableScrollController}
+                    mode={feedType}
                     onToggle={key => {
                       setExpandedKeys(prev => {
                         const next = new Set(prev);
@@ -880,6 +896,18 @@ export function HomeScreenV2({navigation}: Props) {
             contentContainerStyle={[styles.listContent, {paddingBottom: Math.max(insets.bottom, 20)}]}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => loadFeed('refresh')} />}
           />
+          {showBackToTop ? (
+            <View style={styles.backToTopButton}>
+              <Pressable
+                onPress={() => feedListRef.current?.scrollToOffset({offset: 0, animated: true})}
+                hitSlop={8}>
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  <Path d="M12 19V5" stroke="#006A61" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+                  <Path d="M6 11L12 5L18 11" stroke="#006A61" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+              </Pressable>
+            </View>
+          ) : null}
           <FilterSheets
             activeFilter={activeFilter}
             topOffset={filterPanelTop}
@@ -888,13 +916,12 @@ export function HomeScreenV2({navigation}: Props) {
             filters={filters}
             setFilters={setFilters}
             priceMinInput={priceMinInput}
-            priceMaxInput={priceMaxInput}
             setPriceMinInput={setPriceMinInput}
             setPriceMaxInput={setPriceMaxInput}
             filterOptions={filterOptions}
             onClose={() => setActiveFilter(null)}
           />
-        </>
+        </View>
       )}
 
       <OfferActionSheetFast
@@ -2143,7 +2170,7 @@ function normalizeMerchantName(value?: string | null) {
 
 function mergePrice(items: OfferFeedItem[], type: 'offer' | 'inquiry') {
   const values = items.flatMap(item => [item.price, item.priceMax]).filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-  if (values.length === 0) return type === 'offer' ? '协商报价' : '';
+  if (values.length === 0) return '协商报价';
   const min = Math.min(...values);
   const max = Math.max(...values);
   if (min === max) return '¥' + formatNumber(min) + '/kg';
@@ -2656,6 +2683,8 @@ const styles = StyleSheet.create({
   discoveryReason: {flex: 1, minWidth: 0, color: colors.textSecondary, fontSize: 12, lineHeight: 17},
   discoveryArrow: {color: colors.primary, fontSize: 21, lineHeight: 22},
   filterBlock: {backgroundColor: '#FFFFFF'},
+  feedContainer: {flex: 1, position: 'relative'},
+  backToTopButton: {position: 'absolute', right: 16, bottom: 90, width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: {width: 0, height: 2}, elevation: 8, zIndex: 20},
   listContent: {paddingBottom: 20, backgroundColor: '#FFFFFF'},
   loading: {marginTop: 40},
   feedFooterLoading: {marginVertical: 14},
