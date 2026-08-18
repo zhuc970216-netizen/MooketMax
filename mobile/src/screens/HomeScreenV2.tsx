@@ -21,18 +21,16 @@ import Svg, {Circle, Path} from 'react-native-svg';
 import {mooketApi} from '../api/mooketApi';
 import {FilterBar, type FilterDef, type FilterKey} from '../components/detail/FilterBar';
 import {FilterPanelSheet, MultiSelectChips} from '../components/detail/FilterPanelSheet';
-import {OriginalTextSheet} from '../components/detail/OriginalTextSheet';
 import {MiniTrendChart} from '../components/home/MiniTrendChart';
-import {OfferActionSheet} from '../components/home/OfferActionSheet';
+import {OfferActionSheetFast} from '../components/home/OfferActionSheetFast';
 import {OfferFrozenTable, OfferFrozenTableHeader, useOfferTableScrollController} from '../components/home/OfferFrozenTable';
 import {DEFAULT_CATEGORY} from '../config/env';
 import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
 import {fonts} from '../theme/typography';
-import type {HomeCardItem, HomeHotSku, HotSearchItem, OfferFeedFilterOptions, OfferFeedItem} from '../types/api';
+import type {CountryFactoryProductDetail, HomeCardItem, HomeHotSku, HotSearchItem, OfferFeedFilterOptions, OfferFeedItem} from '../types/api';
 import {copyToClipboard, dialPhone} from '../utils/contact';
 import {normalizeFactoryNoOrNull} from '../utils/factoryNo';
-import {buildOriginalTextPayload} from '../utils/originalText';
 import {
   addIntentPlate,
   createPlateSnapshotFromFeed,
@@ -47,7 +45,12 @@ import {
 import {buildHotSkuTrendFromDailyPrices, formatHotSkuPriceRange} from '../utils/homeHotSkuTrends';
 import {enrichSelfSelectCards, mergeSelfSelectCardsWithHistories, sortSelfSelectCardsByCreateTime} from '../utils/selfSelectCards';
 import {openHomeCard, openHotSearch} from '../utils/navigation';
-import {buildDiscoveryRecommendations, type DiscoveryRecommendation, type SubstituteRecommendationInput} from '../utils/discoveryRecommendations';
+import {
+  buildDiscoveryRecommendations,
+  getDiscoveryDetailRequestKeys,
+  type DiscoveryMerchantSignal,
+  type DiscoveryRecommendation,
+} from '../utils/discoveryRecommendations';
 import {
   DEV_FILTER_OPTIONS,
   DEV_HOT_SEARCHES,
@@ -158,7 +161,6 @@ export function HomeScreenV2({navigation}: Props) {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [intentKeys, setIntentKeys] = useState<Set<string>>(new Set());
   const [followedMerchantKeys, setFollowedMerchantKeys] = useState<Set<string>>(new Set());
-  const [originalText, setOriginalText] = useState<{text: string; keywords: string[]} | null>(null);
   const [selectedOffer, setSelectedOffer] = useState<OfferFeedItem | null>(null);
   const [selfCompareScene, setSelfCompareScene] = useState<SelfCompareScene>('sku');
   const [selfCompareFilter, setSelfCompareFilter] = useState<SelfCompareFilter>({
@@ -298,36 +300,57 @@ export function HomeScreenV2({navigation}: Props) {
     setDiscoverError('');
     try {
       const recentSelfSelects = sortSelfSelectCardsByCreateTime(cards, []).filter(card => normalizeCardType(card.cardType) === 'factoryProduct');
-      const [hotResult, substituteResults] = await Promise.all([
+      const followedMerchantSignals: DiscoveryMerchantSignal[] = cards
+        .filter(card => normalizeCardType(card.cardType) === 'merchant')
+        .map(card => ({
+          merchantId: card.merchantId ?? null,
+          merchantName: card.merchantName ?? null,
+          merchantShortName: card.merchantShortName ?? null,
+        }))
+        .filter(item => item.merchantId != null || clean(item.merchantName) || clean(item.merchantShortName));
+      const [hotResult, intentPlates] = await Promise.all([
         mooketApi.getHomeHotOfferSkus(category, 30).catch(() => hotSkus),
-        Promise.allSettled(recentSelfSelects.slice(0, 5).map(async (selected): Promise<SubstituteRecommendationInput> => ({
-          selected,
-          substitute: await mooketApi.getSubstituteProducts(clean(selected.country), clean(selected.factoryNo), clean(selected.productName), category),
-        }))),
+        getIntentPlates(),
       ]);
-      const substitutes = substituteResults
-        .filter((result): result is PromiseFulfilledResult<SubstituteRecommendationInput> => result.status === 'fulfilled')
-        .map(result => result.value);
-      const recommendations = buildDiscoveryRecommendations({hotSkus: hotResult, recentSelfSelects, substitutes, limit: 30});
-      const discoveryCandidates = __DEV__ ? ensureDiscoveryDemoCoverage(recommendations) : recommendations;
-      const enrichmentTargets = new Set(discoveryCandidates.filter(item => item.trendPoints.length === 0).slice(0, 10).map(item => item.key));
-      const enriched = await Promise.all(discoveryCandidates.map(async recommendation => {
-        if (recommendation.trendPoints.length > 0 || !enrichmentTargets.has(recommendation.key)) return recommendation;
-        try {
-          const comparison = await mooketApi.getFactoryPriceComparison(recommendation.country, [recommendation.factoryNo], recommendation.productName, category);
-          const factory = comparison.factories?.[0];
-          const prices = factory?.trend?.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value) && value > 0) ?? [];
-          return {
-            ...recommendation,
-            priceMin: prices.length > 0 ? Math.min(...prices) : recommendation.priceMin,
-            priceMax: prices.length > 0 ? Math.max(...prices) : recommendation.priceMax,
-            trendPoints: factory?.trend?.map(point => ({date: point.date, avgPrice: point.avgPrice, offerCount: point.offerCount})) ?? [],
-          };
-        } catch {
-          return recommendation;
+      const initialRecommendations = buildDiscoveryRecommendations({
+        hotSkus: hotResult,
+        recentSelfSelects,
+        intentPlates,
+        followedMerchants: followedMerchantSignals,
+        limit: 30,
+      });
+      const detailTargetKeys = new Set(getDiscoveryDetailRequestKeys(initialRecommendations, 12));
+      const detailMap = new Map<string, CountryFactoryProductDetail>();
+      const detailResults = await Promise.allSettled(
+        initialRecommendations
+          .filter(item => detailTargetKeys.has(item.key))
+          .map(async item => {
+            const detail = await mooketApi.getCountryFactoryProductDetail(
+              item.country,
+              item.factoryNo,
+              item.productName,
+              category,
+            );
+            return [item.key, detail] as const;
+          }),
+      );
+      detailResults.forEach(result => {
+        if (result.status === 'fulfilled') {
+          const [key, detail] = result.value;
+          detailMap.set(key, detail);
         }
-      }));
-      if (seq === discoveryRequestSeqRef.current) setDiscoverItems(sortDiscoveryCardsForDisplay(enriched));
+      });
+      const finalRecommendations = buildDiscoveryRecommendations({
+        hotSkus: hotResult,
+        recentSelfSelects,
+        intentPlates,
+        followedMerchants: followedMerchantSignals,
+        detailsBySkuKey: detailMap,
+        limit: 30,
+      });
+      if (seq === discoveryRequestSeqRef.current) {
+        setDiscoverItems(finalRecommendations);
+      }
     } catch (error) {
       if (seq === discoveryRequestSeqRef.current) {
         setDiscoverItems([]);
@@ -651,18 +674,6 @@ export function HomeScreenV2({navigation}: Props) {
     }
   }
 
-  function showOfferOriginal(item: OfferFeedItem) {
-    const payload = buildOriginalTextPayload({
-      text: item.offerOriginalText, intent: feedType === 'inquiry' ? 'inquiry' : 'offer', offerType: item.offerType,
-      country: item.country, factoryNo: item.factoryNo, productName: item.productName, price: item.price,
-      priceMax: item.priceMax, goodsLocation: item.goodsLocation, goodsType: item.goodsType, feedingType: item.feedingType,
-      fatRatio: item.fatRatio, cattleBreed: item.cattleBreed, tags: item.tags, remark: item.remark,
-      publishTime: item.publishTime, userNickname: item.userNickname, merchantName: item.merchantName,
-      merchantShortName: item.merchantShortName,
-    });
-    setOriginalText({text: payload.text, keywords: payload.keywords});
-  }
-
   function openOfferMerchant(item: OfferFeedItem) {
     if (item.merchantId == null || !String(item.merchantId).trim()) return;
     setSelectedOffer(null);
@@ -886,9 +897,10 @@ export function HomeScreenV2({navigation}: Props) {
         </>
       )}
 
-      <OfferActionSheet
+      <OfferActionSheetFast
         visible={Boolean(selectedOffer)}
         item={selectedOffer}
+        feedType={feedType}
         intentAdded={selectedOffer ? intentKeys.has(createPlateSnapshotFromFeed(selectedOffer, feedType).key) : false}
         onClose={() => setSelectedOffer(null)}
         onMerchant={() => selectedOffer && openOfferMerchant(selectedOffer)}
@@ -896,16 +908,6 @@ export function HomeScreenV2({navigation}: Props) {
         onCopyPhone={() => selectedOffer && handleContact(selectedOffer, 'wechat')}
         onIntent={() => selectedOffer && handleToggleIntent(selectedOffer)}
         onOnlineChat={() => selectedOffer && openOfferChat(selectedOffer)}
-        onOriginal={() => {
-          if (!selectedOffer) return;
-          showOfferOriginal(selectedOffer);
-        }}
-      />
-      <OriginalTextSheet
-        visible={Boolean(originalText)}
-        text={originalText?.text ?? ''}
-        keywords={originalText?.keywords ?? []}
-        onClose={() => setOriginalText(null)}
       />
       <SelfEditSheet
         visible={selfEditVisible}
@@ -1032,11 +1034,20 @@ function DiscoverScreen({header, items, loading, error, onRefresh, onPress}: {
   );
 }
 
+type DiscoveryTone = {
+  badgeBackground: string;
+  badgeColor: string;
+  blockBackground: string;
+  blockBorder: string;
+  accent: string;
+};
+
 function DiscoveryCard({item, onPress}: {item: DiscoveryRecommendation; onPress: () => void}) {
-  const trend = item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value) && value > 0);
-  const variant = getDiscoveryVariant(item, trend);
+  const trend = item.trendPoints
+    .map(point => Number(point.avgPrice))
+    .filter(value => Number.isFinite(value) && value > 0);
   const priceText = discoveryPriceRange(item.priceMin, item.priceMax) || '协商报价';
-  const reasonTone = getDiscoveryReasonTone(variant);
+  const tone = getDiscoveryTone(item.relationType);
   return (
     <Pressable onPress={onPress} style={({pressed}) => [styles.discoveryCard, pressed && styles.pressed]}>
       <View style={styles.discoveryCardMain}>
@@ -1047,126 +1058,116 @@ function DiscoveryCard({item, onPress}: {item: DiscoveryRecommendation; onPress:
           </View>
           <Text style={styles.discoveryPrice} numberOfLines={1}>{priceText}</Text>
         </View>
-        {variant === 'substitute' ? (
-          <DiscoverySubstituteBlock item={item} priceText={priceText} />
-        ) : variant === 'down' ? (
-          <DiscoveryTrendBlock item={item} trend={trend} />
-        ) : variant === 'merchant' ? (
-          <DiscoveryMerchantBlock item={item} />
-        ) : variant === 'hot' ? (
-          <DiscoveryRankBlock item={item} />
+        {item.template === 'compare' ? (
+          <DiscoveryCompareBlock item={item} tone={tone} />
+        ) : item.template === 'merchant' ? (
+          <DiscoveryMerchantEvidenceBlock item={item} tone={tone} />
         ) : (
-          <DiscoveryComboBlock item={item} />
+          <DiscoveryMarketEvidenceBlock item={item} tone={tone} trend={trend} />
         )}
       </View>
       <View style={styles.discoveryReasonRow}>
-        <Text style={[styles.discoveryReasonBadge, reasonTone.badge]}>{reasonTone.label}</Text>
-        <Text style={styles.discoveryReason} numberOfLines={1}>{item.reason}</Text>
+        <Text
+          style={[
+            styles.discoveryReasonBadge,
+            {backgroundColor: tone.badgeBackground, color: tone.badgeColor},
+          ]}>
+          {item.reasonBadge}
+        </Text>
+        <Text style={styles.discoveryReason} numberOfLines={1}>{item.reasonText}</Text>
         <Text style={styles.discoveryArrow}>›</Text>
       </View>
     </Pressable>
   );
 }
 
-function DiscoverySubstituteBlock({item, priceText}: {item: DiscoveryRecommendation; priceText: string}) {
-  const related = getSubstituteRelatedSku(item);
+function DiscoveryCompareBlock({item, tone}: {item: DiscoveryRecommendation; tone: DiscoveryTone}) {
+  const seedLabel = [item.seedFactoryNo, item.seedProductName].filter(Boolean).join(' · ');
   return (
-    <View style={styles.discoverySubstituteBox}>
-      <View style={styles.discoverySubstituteLine}>
-        <Text style={styles.discoverySubstitutePair} numberOfLines={1}>
-          {related.productName} <Text style={styles.discoverySubstituteMuted}>{related.price}</Text> → <Text style={styles.discoverySubstituteStrong}>{item.productName}</Text> <Text style={styles.discoverySubstituteMuted}>{priceText}</Text>
+    <View
+      style={[
+        styles.discoveryCompareBox,
+        {backgroundColor: tone.blockBackground, borderColor: tone.blockBorder},
+      ]}>
+      <View style={styles.discoveryCompareFlow}>
+        <Text style={styles.discoveryCompareSeed} numberOfLines={1}>{seedLabel || '当前关注品'}</Text>
+        <Text style={[styles.discoveryCompareFlowArrow, {color: tone.accent}]}>→</Text>
+        <Text style={[styles.discoveryCompareTarget, {color: tone.accent}]} numberOfLines={1}>
+          {item.factoryNo}
         </Text>
-        <Text style={styles.discoverySubstituteStatus}>价格相近</Text>
+        <Text
+          style={[
+            styles.discoveryComparePill,
+            {backgroundColor: tone.badgeBackground, color: tone.badgeColor},
+          ]}>
+          {getDiscoveryComparePill(item)}
+        </Text>
       </View>
-      <Text style={styles.discoverySubstituteDesc} numberOfLines={1}>加工可替代 · 同属相近部位 · 在售 {Math.max(item.offerCount, 1)}</Text>
+      <Text style={styles.discoveryEvidenceText} numberOfLines={2}>{item.evidenceText}</Text>
     </View>
   );
 }
 
-function DiscoveryTrendBlock({item, trend}: {item: DiscoveryRecommendation; trend: number[]}) {
-  const change = getTrendChangeText(trend);
+function DiscoveryMerchantEvidenceBlock({item, tone}: {item: DiscoveryRecommendation; tone: DiscoveryTone}) {
+  const merchants = item.matchedFollowedMerchants.map(merchant => merchant.name).filter(Boolean);
+  const visibleMerchants = merchants.slice(0, 2);
+  const extraCount = Math.max(merchants.length - visibleMerchants.length, 0);
   return (
-    <View style={styles.discoveryTrendBlock}>
-      <View style={styles.discoveryTrendInfo}>
-        <Text style={styles.discoveryTrendTitle}>近7日报价走势</Text>
-        <Text style={styles.discoveryTrendDesc}>{change} · {item.offerCount}报盘可比价</Text>
-      </View>
-      <MiniTrendChart data={trend} width={118} height={36} color={colors.price} />
-    </View>
-  );
-}
-
-function DiscoveryMerchantBlock({item}: {item: DiscoveryRecommendation}) {
-  const merchants = getDiscoveryMerchantNames(item);
-  return (
-    <View style={styles.discoveryMerchantBlock}>
-      <Text style={styles.discoveryMerchantLead}>{item.merchantCount}商家发布</Text>
+    <View
+      style={[
+        styles.discoveryMerchantBlock,
+        {backgroundColor: tone.blockBackground, borderColor: tone.blockBorder},
+      ]}>
       <View style={styles.discoveryMerchantList}>
-        {merchants.map(name => <Text key={name} style={styles.discoveryMerchantChip} numberOfLines={1}>{name}</Text>)}
-        <Text style={[styles.discoveryMerchantChip, styles.discoveryMerchantMore]}>+{Math.max(item.merchantCount - merchants.length, 0)}</Text>
+        {visibleMerchants.map(name => (
+          <Text key={name} style={[styles.discoveryMerchantChip, {color: tone.accent}]} numberOfLines={1}>
+            {name}
+          </Text>
+        ))}
+        {extraCount > 0 ? (
+          <Text
+            style={[
+              styles.discoveryMerchantChip,
+              styles.discoveryMerchantMore,
+              {color: tone.accent},
+            ]}>
+            +{extraCount}
+          </Text>
+        ) : null}
       </View>
+      <Text style={styles.discoveryEvidenceText} numberOfLines={2}>{item.evidenceText}</Text>
     </View>
   );
 }
 
-function DiscoveryRankBlock({item}: {item: DiscoveryRecommendation}) {
+function DiscoveryMarketEvidenceBlock({
+  item,
+  tone,
+  trend,
+}: {
+  item: DiscoveryRecommendation;
+  tone: DiscoveryTone;
+  trend: number[];
+}) {
   return (
-    <View style={styles.discoveryRankStrip}>
-      <View style={styles.discoveryRankCell}>
-        <Text style={styles.discoveryRankLabel}>报盘热度</Text>
-        <Text style={styles.discoveryRankValue}>第 {getDiscoveryRank(item)}</Text>
+    <View
+      style={[
+        styles.discoveryMarketBlock,
+        {backgroundColor: tone.blockBackground, borderColor: tone.blockBorder},
+      ]}>
+      <View style={styles.discoveryMarketInfo}>
+        <Text style={[styles.discoveryMarketTitle, {color: tone.badgeColor}]}>
+          {item.relationType === 'market_down' ? '近7日价格走势' : '市场报价热度'}
+        </Text>
+        <Text style={styles.discoveryEvidenceText} numberOfLines={2}>{item.evidenceText}</Text>
       </View>
-      <View style={styles.discoveryRankCell}>
-        <Text style={styles.discoveryRankLabel}>发布商家</Text>
-        <Text style={styles.discoveryRankValue}>{item.merchantCount} 家</Text>
-      </View>
-      <View style={styles.discoveryRankCell}>
-        <Text style={styles.discoveryRankLabel}>活跃程度</Text>
-        <Text style={styles.discoveryRankValue}>{item.offerCount >= 100 ? '高' : '上升'}</Text>
-      </View>
+      {trend.length > 1 ? (
+        <MiniTrendChart data={trend} width={118} height={36} color={tone.accent} />
+      ) : (
+        <Text style={styles.discoveryTrendEmpty}>走势待补齐</Text>
+      )}
     </View>
   );
-}
-
-function DiscoveryComboBlock({item}: {item: DiscoveryRecommendation}) {
-  const companion = getDiscoveryCompanionProduct(item.productName);
-  return (
-    <View style={styles.discoveryComboBox}>
-      <View style={styles.discoveryComboMain}>
-        <Text style={styles.discoveryComboTitle} numberOfLines={1}>组合看盘：{item.productName} + {companion}</Text>
-        <Text style={styles.discoveryComboDesc} numberOfLines={1}>同商家常一起发布，方便打包询价</Text>
-      </View>
-      <Text style={styles.discoveryComboBadge}>省沟通</Text>
-    </View>
-  );
-}
-
-type DiscoveryCardVariant = 'substitute' | 'down' | 'merchant' | 'hot' | 'combo';
-
-function getDiscoveryVariant(item: DiscoveryRecommendation, trend: number[]): DiscoveryCardVariant {
-  const reason = item.reason;
-  if (item.source === 'substitute') return 'substitute';
-  if (isTrendDown(trend)) return 'down';
-  if (reason.includes('多家') || reason.includes('商家多')) return 'merchant';
-  if (reason.includes('活跃') || reason.includes('热度')) return 'hot';
-  if (item.merchantCount >= 70) return 'merchant';
-  if (item.offerCount >= 120) return 'hot';
-  return 'combo';
-}
-
-function getDiscoveryReasonTone(variant: DiscoveryCardVariant) {
-  switch (variant) {
-    case 'substitute':
-      return {label: '关注品替代', badge: styles.discoveryReasonSubstitute};
-    case 'down':
-      return {label: '近7日降价', badge: styles.discoveryReasonDown};
-    case 'merchant':
-      return {label: '多家报价', badge: styles.discoveryReasonMerchant};
-    case 'hot':
-      return {label: '热度上升', badge: styles.discoveryReasonHot};
-    case 'combo':
-      return {label: '组合机会', badge: styles.discoveryReasonCombo};
-  }
 }
 
 function discoveryPriceRange(min?: number | null, max?: number | null) {
@@ -1176,215 +1177,73 @@ function discoveryPriceRange(min?: number | null, max?: number | null) {
   return formatNumber(value ?? 0);
 }
 
-function isTrendDown(values: number[]) {
-  if (values.length < 2) return false;
-  return values[values.length - 1] < values[0];
-}
-
-function getTrendChangeText(values: number[]) {
-  if (values.length < 2) return '趋势待补齐';
-  const first = values[0];
-  const last = values[values.length - 1];
-  const diff = Math.abs(last - first);
-  if (last < first) return `较7日前低 ${formatNumber(diff)}`;
-  if (last > first) return `较7日前高 ${formatNumber(diff)}`;
-  return '价格持平';
-}
-
-function getSubstituteRelatedSku(item: DiscoveryRecommendation) {
-  const match = item.reason.match(/(?:关注的|关注品|自选)\s*([A-Za-z0-9-]+)?\s*([\u4e00-\u9fa5/]+)/);
-  const productName = clean(match?.[2]) || getDiscoveryCompanionProduct(item.productName);
-  const price = item.priceMin ? formatNumber(Math.max(item.priceMin - 0.9, 1)) : '询价';
-  return {productName, price};
-}
-
-function getDiscoveryMerchantNames(item: DiscoveryRecommendation) {
-  const pool = item.country === '巴西'
-    ? ['河南圣铂', '郑州铭泰', '青岛亿帆']
-    : item.country === '美国'
-      ? ['天津鑫汇洋', '河南至铂', '青岛嘉庄']
-      : ['河南茂腾', '青岛亿帆', '郑州铭泰'];
-  return pool.slice(0, Math.min(3, Math.max(1, item.merchantCount)));
-}
-
-function getDiscoveryRank(item: DiscoveryRecommendation) {
-  if (item.offerCount >= 120) return 1;
-  if (item.offerCount >= 100) return 2;
-  if (item.offerCount >= 80) return 3;
-  return 5;
-}
-
-function getDiscoveryCompanionProduct(productName: string) {
-  if (productName.includes('腩')) return '前腱';
-  if (productName.includes('前')) return '牛腩';
-  if (productName.includes('胸')) return '牛腩';
-  if (productName.includes('板腱')) return '保乐肩';
-  return '同类品';
-}
-
-function ensureDiscoveryDemoCoverage(items: DiscoveryRecommendation[]) {
-  const existing = new Set(items.map(item => item.key));
-  const covered = new Set(items.map(item => getDiscoveryVariant(item, item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value) && value > 0))));
-  const forcedDemoKeys = new Set(['demo|down|巴西|SIF2015|牛前八件套']);
-  const forcedDemos = DISCOVERY_DEMO_RECOMMENDATIONS.filter(item => forcedDemoKeys.has(item.key));
-  const additions = DISCOVERY_DEMO_RECOMMENDATIONS.filter(item => {
-    if (forcedDemoKeys.has(item.key)) return false;
-    const trend = item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value) && value > 0);
-    const variant = getDiscoveryVariant(item, trend);
-    return !existing.has(item.key) && !covered.has(variant);
-  });
-  const result: DiscoveryRecommendation[] = [];
-  const seen = new Set<string>();
-  [...forcedDemos, ...items, ...additions].forEach(item => {
-    if (seen.has(item.key)) return;
-    seen.add(item.key);
-    result.push(item);
-  });
-  return result.slice(0, 30);
-}
-
-function sortDiscoveryCardsForDisplay(items: DiscoveryRecommendation[]) {
-  const buckets: Record<DiscoveryCardVariant, DiscoveryRecommendation[]> = {
-    down: [],
-    combo: [],
-    substitute: [],
-    merchant: [],
-    hot: [],
-  };
-  items.forEach(item => {
-    const trend = item.trendPoints.map(point => Number(point.avgPrice)).filter(value => Number.isFinite(value) && value > 0);
-    buckets[getDiscoveryVariant(item, trend)].push(item);
-  });
-  (Object.keys(buckets) as DiscoveryCardVariant[]).forEach(variant => {
-    buckets[variant].sort(compareDiscoveryActivity);
-  });
-
-  const result: DiscoveryRecommendation[] = [];
-  const firstThree: DiscoveryCardVariant[] = ['down', 'combo', 'substitute'];
-  firstThree.forEach(variant => {
-    const item = buckets[variant].shift();
-    if (item) result.push(item);
-  });
-
-  const cycle: DiscoveryCardVariant[] = ['merchant', 'hot', 'down', 'combo', 'substitute'];
-  while (result.length < items.length) {
-    const before = result.length;
-    cycle.forEach(variant => {
-      const item = buckets[variant].shift();
-      if (item) result.push(item);
-    });
-    if (result.length === before) break;
+function getDiscoveryComparePill(item: DiscoveryRecommendation) {
+  switch (item.relationType) {
+    case 'ladder_budget':
+      return item.priceDelta != null && item.priceDelta < 0
+        ? `省${formatNumber(Math.abs(item.priceDelta))}`
+        : '低一档';
+    case 'ladder_premium':
+    case 'merchant_premium':
+      return '高一档';
+    default:
+      return '同级';
   }
-  return result;
 }
 
-function compareDiscoveryActivity(left: DiscoveryRecommendation, right: DiscoveryRecommendation) {
-  if (left.offerCount !== right.offerCount) return right.offerCount - left.offerCount;
-  if (left.merchantCount !== right.merchantCount) return right.merchantCount - left.merchantCount;
-  return right.score - left.score;
+function getDiscoveryTone(relationType: DiscoveryRecommendation['relationType']): DiscoveryTone {
+  switch (relationType) {
+    case 'ladder_peer':
+      return {
+        badgeBackground: '#EAF7F3',
+        badgeColor: '#168C7E',
+        blockBackground: '#F6FCFA',
+        blockBorder: '#D7EEE8',
+        accent: '#168C7E',
+      };
+    case 'ladder_budget':
+      return {
+        badgeBackground: '#FFF1EB',
+        badgeColor: '#D66D3F',
+        blockBackground: '#FFF8F4',
+        blockBorder: '#F3DDD0',
+        accent: '#D66D3F',
+      };
+    case 'ladder_premium':
+    case 'merchant_premium':
+      return {
+        badgeBackground: '#FFF6E8',
+        badgeColor: '#B67B1C',
+        blockBackground: '#FFFBEF',
+        blockBorder: '#F2E4C4',
+        accent: '#B67B1C',
+      };
+    case 'merchant_peer':
+      return {
+        badgeBackground: '#EAF7F3',
+        badgeColor: '#0E9385',
+        blockBackground: '#F5FBFA',
+        blockBorder: '#D7EEEA',
+        accent: '#0E9385',
+      };
+    case 'market_down':
+      return {
+        badgeBackground: '#EDF8F2',
+        badgeColor: '#2C9660',
+        blockBackground: '#F7FCF9',
+        blockBorder: '#D8EEDF',
+        accent: '#2C9660',
+      };
+    case 'market_hot':
+      return {
+        badgeBackground: '#FFF1EF',
+        badgeColor: '#D65A4A',
+        blockBackground: '#FFF8F6',
+        blockBorder: '#F4D8D3',
+        accent: '#D65A4A',
+      };
+  }
 }
-
-const DISCOVERY_DEMO_RECOMMENDATIONS: DiscoveryRecommendation[] = [
-  {
-    key: 'demo|substitute|巴西|SIF3974|胸肉',
-    country: '巴西',
-    factoryNo: 'SIF3974',
-    productId: null,
-    productName: '胸肉',
-    priceMin: 50.7,
-    priceMax: 52,
-    offerCount: 42,
-    merchantCount: 24,
-    trendPoints: [],
-    source: 'substitute',
-    reason: '你关注的 SIF504 牛腩的替代品',
-    score: 1_000_000,
-  },
-  {
-    key: 'demo|down|巴西|SIF2015|牛前八件套',
-    country: '巴西',
-    factoryNo: 'SIF2015',
-    productId: null,
-    productName: '牛前八件套',
-    priceMin: 54.4,
-    priceMax: 56.5,
-    offerCount: 63,
-    merchantCount: 31,
-    trendPoints: [
-      {date: '2026-08-07', avgPrice: 57.4, offerCount: 12},
-      {date: '2026-08-08', avgPrice: 57.1, offerCount: 15},
-      {date: '2026-08-09', avgPrice: 56.7, offerCount: 18},
-      {date: '2026-08-10', avgPrice: 56.3, offerCount: 20},
-      {date: '2026-08-11', avgPrice: 55.8, offerCount: 19},
-      {date: '2026-08-12', avgPrice: 55.1, offerCount: 21},
-      {date: '2026-08-13', avgPrice: 54.6, offerCount: 24},
-    ],
-    source: 'hot',
-    reason: '报价连续走低，适合比价',
-    score: 30_000,
-  },
-  {
-    key: 'demo|merchant|巴西|SIF504|胸肉',
-    country: '巴西',
-    factoryNo: 'SIF504',
-    productId: null,
-    productName: '胸肉',
-    priceMin: 50.2,
-    priceMax: 51.5,
-    offerCount: 58,
-    merchantCount: 36,
-    trendPoints: [
-      {date: '2026-08-07', avgPrice: 50.6, offerCount: 16},
-      {date: '2026-08-08', avgPrice: 50.8, offerCount: 18},
-      {date: '2026-08-09', avgPrice: 50.7, offerCount: 20},
-      {date: '2026-08-10', avgPrice: 51.1, offerCount: 19},
-      {date: '2026-08-11', avgPrice: 51.2, offerCount: 22},
-      {date: '2026-08-12', avgPrice: 51.1, offerCount: 20},
-      {date: '2026-08-13', avgPrice: 51.3, offerCount: 23},
-    ],
-    source: 'hot',
-    reason: '发布商家多，价格更好比较',
-    score: 28_000,
-  },
-  {
-    key: 'demo|hot|美国|337|板腱',
-    country: '美国',
-    factoryNo: '337',
-    productId: null,
-    productName: '板腱',
-    priceMin: 62,
-    priceMax: 63.8,
-    offerCount: 74,
-    merchantCount: 28,
-    trendPoints: [
-      {date: '2026-08-07', avgPrice: 62.1, offerCount: 7},
-      {date: '2026-08-08', avgPrice: 62.4, offerCount: 9},
-      {date: '2026-08-09', avgPrice: 62.7, offerCount: 12},
-      {date: '2026-08-10', avgPrice: 62.8, offerCount: 13},
-      {date: '2026-08-11', avgPrice: 63.1, offerCount: 16},
-      {date: '2026-08-12', avgPrice: 63.2, offerCount: 17},
-      {date: '2026-08-13', avgPrice: 63.1, offerCount: 19},
-    ],
-    source: 'hot',
-    reason: '近期发布活跃，值得看看',
-    score: 20_000,
-  },
-  {
-    key: 'demo|combo|巴西|SIF3470|前腱',
-    country: '巴西',
-    factoryNo: 'SIF3470',
-    productId: null,
-    productName: '前腱',
-    priceMin: 67,
-    priceMax: 67,
-    offerCount: 48,
-    merchantCount: 22,
-    trendPoints: [],
-    source: 'preference',
-    reason: '与牛腩常一起发布，方便组合询价',
-    score: 10_000,
-  },
-];
 
 /* Legacy publisher-card implementation retained temporarily while the frozen table is rolled out. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1403,7 +1262,7 @@ function FeedGroupRow({
   type: 'offer' | 'inquiry';
   intentKeys: Set<string>;
   onToggle: () => void;
-  onOriginal: (payload: {text: string; keywords: string[]}) => void;
+  onOriginal: (item: OfferFeedItem) => void;
   onToggleIntent: (item: OfferFeedItem) => void;
   onContact: (item: OfferFeedItem, action: ContactAction) => void;
 }) {
@@ -1435,30 +1294,7 @@ function FeedGroupRow({
               item={item}
               type={type}
               isIntentAdded={intentKeys.has(createPlateSnapshotFromFeed(item, type).key)}
-              onOriginal={() => {
-                const payload = buildOriginalTextPayload({
-                  text: item.offerOriginalText,
-                  intent: type === 'inquiry' ? 'inquiry' : 'offer',
-                  offerType: item.offerType,
-                  country: item.country,
-                  factoryNo: item.factoryNo,
-                  productName: item.productName,
-                  price: item.price,
-                  priceMax: item.priceMax,
-                  goodsLocation: item.goodsLocation,
-                  goodsType: item.goodsType,
-                  feedingType: item.feedingType,
-                  fatRatio: item.fatRatio,
-                  cattleBreed: item.cattleBreed,
-                  tags: item.tags,
-                  remark: item.remark,
-                  publishTime: item.publishTime,
-                  userNickname: item.userNickname,
-                  merchantName: item.merchantName,
-                  merchantShortName: item.merchantShortName,
-                });
-                onOriginal({text: payload.text, keywords: payload.keywords});
-              }}
+              onOriginal={() => onOriginal(item)}
               onIntent={() => onToggleIntent(item)}
               onWechat={() => onContact(item, 'wechat')}
               onPhone={() => onContact(item, 'phone')}
@@ -2793,47 +2629,32 @@ const styles = StyleSheet.create({
   discoverList: {paddingBottom: 24, backgroundColor: '#FFFFFF'},
   discoverEmpty: {minHeight: 140, alignItems: 'center', justifyContent: 'center'},
   discoverRetry: {marginTop: 8, color: colors.primary, fontSize: 12, fontWeight: '800'},
-  discoveryCard: {minHeight: 126, marginHorizontal: 10, marginTop: 10, borderRadius: 8, borderWidth: 1, borderColor: '#D9E7E4', backgroundColor: '#FFFFFF', overflow: 'hidden'},
+  discoveryCard: {minHeight: 132, marginHorizontal: 10, marginTop: 10, borderRadius: 10, borderWidth: 1, borderColor: '#DCEAE6', backgroundColor: '#FFFFFF', overflow: 'hidden'},
   discoveryCardMain: {paddingHorizontal: 12, paddingTop: 12},
   discoveryTop: {flexDirection: 'row', alignItems: 'flex-start', gap: 10},
   discoveryMain: {flex: 1, minWidth: 0},
-  discoveryProduct: {color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: '900'},
-  discoverySku: {marginTop: 2, color: colors.textSecondary, fontSize: 12, lineHeight: 17, fontWeight: '700'},
-  discoveryPrice: {maxWidth: 124, color: colors.price, fontSize: 18, lineHeight: 23, fontWeight: '900', textAlign: 'right'},
-  discoverySubstituteBox: {marginTop: 10, paddingHorizontal: 10, paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: '#BFE7DD', backgroundColor: '#E9F8F3'},
-  discoverySubstituteLine: {flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8},
-  discoverySubstitutePair: {flex: 1, minWidth: 0, color: '#65736F', fontSize: 13, lineHeight: 18, fontWeight: '800'},
-  discoverySubstituteMuted: {color: '#8DA09B', fontSize: 12, fontWeight: '800'},
-  discoverySubstituteStrong: {color: colors.primary, fontSize: 15, fontWeight: '900'},
-  discoverySubstituteStatus: {color: '#F59B00', fontSize: 13, lineHeight: 18, fontWeight: '900'},
-  discoverySubstituteDesc: {marginTop: 5, color: '#8A9A96', fontSize: 12, lineHeight: 17, fontWeight: '800'},
-  discoveryTrendBlock: {marginTop: 10, minHeight: 48, paddingHorizontal: 9, paddingVertical: 7, borderRadius: 7, backgroundColor: '#FFF7F6', borderWidth: 1, borderColor: '#F4D2CD', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8},
-  discoveryTrendInfo: {flex: 1, minWidth: 0},
-  discoveryTrendTitle: {color: '#A43F37', fontSize: 13, lineHeight: 18, fontWeight: '900'},
-  discoveryTrendDesc: {marginTop: 2, color: '#8C6A66', fontSize: 11, lineHeight: 15, fontWeight: '700'},
-  discoveryMerchantBlock: {marginTop: 10},
-  discoveryMerchantLead: {color: colors.textSecondary, fontSize: 12, lineHeight: 17, fontWeight: '800'},
-  discoveryMerchantList: {marginTop: 7, flexDirection: 'row', alignItems: 'center', gap: 6, overflow: 'hidden'},
-  discoveryMerchantChip: {maxWidth: 82, height: 24, paddingHorizontal: 8, borderRadius: 5, overflow: 'hidden', backgroundColor: '#F1F5F4', color: '#40514D', fontSize: 12, lineHeight: 24, fontWeight: '800'},
-  discoveryMerchantMore: {color: colors.primary, backgroundColor: colors.primaryLight},
-  discoveryRankStrip: {marginTop: 10, borderRadius: 7, borderWidth: 1, borderColor: '#E3EEEB', overflow: 'hidden', flexDirection: 'row'},
-  discoveryRankCell: {flex: 1, minWidth: 0, paddingHorizontal: 6, paddingVertical: 7, backgroundColor: '#FBFDFC', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: '#E3EEEB'},
-  discoveryRankLabel: {color: colors.textMuted, fontSize: 10, lineHeight: 14, fontWeight: '700'},
-  discoveryRankValue: {marginTop: 2, color: colors.text, fontSize: 13, lineHeight: 16, fontWeight: '900'},
-  discoveryComboBox: {marginTop: 10, paddingHorizontal: 9, paddingVertical: 8, borderRadius: 7, borderWidth: 1, borderColor: '#F0E4CF', backgroundColor: '#FFF9F0', flexDirection: 'row', alignItems: 'center', gap: 8},
-  discoveryComboMain: {flex: 1, minWidth: 0},
-  discoveryComboTitle: {color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '900'},
-  discoveryComboDesc: {marginTop: 2, color: colors.textMuted, fontSize: 11, lineHeight: 15, fontWeight: '700'},
-  discoveryComboBadge: {color: '#9A6714', fontSize: 15, lineHeight: 20, fontWeight: '900'},
-  discoveryReasonRow: {height: 36, marginTop: 10, paddingHorizontal: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E3ECE9', flexDirection: 'row', alignItems: 'center', gap: 7},
-  discoveryReasonBadge: {overflow: 'hidden', borderRadius: 3, backgroundColor: colors.primaryLight, color: colors.primary, fontSize: 10, lineHeight: 18, paddingHorizontal: 5, fontWeight: '800'},
-  discoveryReasonSubstitute: {backgroundColor: colors.primaryLight, color: colors.primary},
-  discoveryReasonDown: {backgroundColor: '#FFF1EF', color: '#C94B3F'},
-  discoveryReasonMerchant: {backgroundColor: '#EEF6FF', color: '#246BB2'},
-  discoveryReasonHot: {backgroundColor: '#FFF7E6', color: '#9A6714'},
-  discoveryReasonCombo: {backgroundColor: '#F3F0FF', color: '#6B55B8'},
+  discoveryProduct: {color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: '900'},
+  discoverySku: {marginTop: 3, color: colors.textSecondary, fontSize: 12, lineHeight: 17, fontWeight: '700'},
+  discoveryPrice: {maxWidth: 126, color: colors.price, fontSize: 18, lineHeight: 24, fontWeight: '900', textAlign: 'right'},
+  discoveryCompareBox: {marginTop: 12, paddingHorizontal: 11, paddingVertical: 10, borderRadius: 8, borderWidth: 1},
+  discoveryCompareFlow: {flexDirection: 'row', alignItems: 'center', gap: 6, minWidth: 0},
+  discoveryCompareSeed: {flexShrink: 1, color: '#7A8783', fontSize: 13, lineHeight: 18, fontWeight: '700'},
+  discoveryCompareFlowArrow: {fontSize: 14, lineHeight: 18, fontWeight: '800'},
+  discoveryCompareTarget: {maxWidth: 88, color: colors.text, fontSize: 18, lineHeight: 22, fontWeight: '900'},
+  discoveryComparePill: {marginLeft: 'auto', minWidth: 42, paddingHorizontal: 8, borderRadius: 8, overflow: 'hidden', fontSize: 12, lineHeight: 22, fontWeight: '800', textAlign: 'center'},
+  discoveryMerchantBlock: {marginTop: 12, paddingHorizontal: 11, paddingVertical: 10, borderRadius: 8, borderWidth: 1},
+  discoveryMerchantList: {flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6},
+  discoveryMerchantChip: {maxWidth: 100, height: 24, paddingHorizontal: 8, borderRadius: 6, overflow: 'hidden', backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DAE5E2', fontSize: 12, lineHeight: 22, fontWeight: '700'},
+  discoveryMerchantMore: {backgroundColor: '#F2F7F6'},
+  discoveryMarketBlock: {marginTop: 12, minHeight: 60, paddingHorizontal: 11, paddingVertical: 10, borderRadius: 8, borderWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10},
+  discoveryMarketInfo: {flex: 1, minWidth: 0},
+  discoveryMarketTitle: {fontSize: 13, lineHeight: 18, fontWeight: '900'},
+  discoveryEvidenceText: {marginTop: 5, color: colors.textMuted, fontSize: 12, lineHeight: 17, fontWeight: '700'},
+  discoveryTrendEmpty: {color: '#92A29C', fontSize: 11, lineHeight: 16, fontWeight: '700'},
+  discoveryReasonRow: {height: 38, marginTop: 12, paddingHorizontal: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E1EBE8', flexDirection: 'row', alignItems: 'center', gap: 7},
+  discoveryReasonBadge: {overflow: 'hidden', borderRadius: 4, fontSize: 10, lineHeight: 18, paddingHorizontal: 6, fontWeight: '800'},
   discoveryReason: {flex: 1, minWidth: 0, color: colors.textSecondary, fontSize: 12, lineHeight: 17},
-  discoveryArrow: {color: colors.primary, fontSize: 22, lineHeight: 24},
+  discoveryArrow: {color: colors.primary, fontSize: 21, lineHeight: 22},
   filterBlock: {backgroundColor: '#FFFFFF'},
   listContent: {paddingBottom: 20, backgroundColor: '#FFFFFF'},
   loading: {marginTop: 40},

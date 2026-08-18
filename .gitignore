@@ -54,6 +54,7 @@ mobile/ios/build/
 *.xlsx
 *.xls
 *.png
+!mobile/assets/auto-sync-guide.png
 *.jpg
 ~$*
 

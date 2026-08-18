@@ -1,0 +1,3 @@
+display_name: MOOKET Emulator Fast Start
+short_description: Quickly reuse or start the stable MOOKET Android emulator, connect Metro, and open the app.
+default_prompt: Start the MOOKET emulator quickly and open the app for review.
