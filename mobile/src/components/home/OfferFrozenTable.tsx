@@ -16,6 +16,7 @@ export type OfferTableGroup = {
 };
 
 type TableMode = 'offer' | 'inquiry';
+export type OfferView = 'default' | 'split';
 
 type Props = {
   groups: OfferTableGroup[];
@@ -25,6 +26,7 @@ type Props = {
   renderHeader?: boolean;
   scrollController?: OfferTableScrollController;
   mode?: TableMode;
+  offerView?: OfferView;
 };
 
 export type OfferTableScrollController = {
@@ -60,6 +62,14 @@ const columns = [
   {key: 'feeding', title: '饲养方式', width: 88},
   {key: 'weight', title: '数量', width: 82},
 ] as const;
+const offerSplitColumns = [
+  {key: 'price', title: '价格', width: 72},
+  {key: 'merchant', title: '商家', width: 110},
+  {key: 'location', title: '货物地', width: 50},
+  {key: 'tags', title: '标签', width: 91},
+  {key: 'feeding', title: '饲养方式', width: 88},
+  {key: 'weight', title: '数量', width: 82},
+] as const;
 const inquiryColumns = [
   {key: 'tags', title: '标签', width: 88},
   {key: 'weight', title: '数量', width: 76},
@@ -68,13 +78,16 @@ const inquiryColumns = [
   {key: 'location', title: '货物地', width: 56},
 ] as const;
 const INQUIRY_MIDDLE_WIDTH = inquiryColumns.reduce((sum, column) => sum + column.width, 0);
+const OFFER_SPLIT_MIDDLE_WIDTH = offerSplitColumns.reduce((sum, column) => sum + column.width, 0);
 
-function getTableColumns(mode: TableMode) {
-  return mode === 'inquiry' ? inquiryColumns : columns;
+function getTableColumns(mode: TableMode, offerView: OfferView = 'default') {
+  if (mode === 'inquiry') return inquiryColumns;
+  return offerView === 'split' ? offerSplitColumns : columns;
 }
 
-function getScrollWidth(mode: TableMode) {
-  return mode === 'inquiry' ? INQUIRY_MIDDLE_WIDTH : MIDDLE_WIDTH;
+function getScrollWidth(mode: TableMode, offerView: OfferView = 'default') {
+  if (mode === 'inquiry') return INQUIRY_MIDDLE_WIDTH;
+  return offerView === 'split' ? OFFER_SPLIT_MIDDLE_WIDTH : MIDDLE_WIDTH;
 }
 
 export function getOfferTableValues(item?: OfferFeedItem) {
@@ -131,10 +144,12 @@ export function useOfferTableScrollController(): OfferTableScrollController {
   );
 }
 
-export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPress, renderHeader = true, scrollController, mode = 'offer'}: Props) {
+export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPress, renderHeader = true, scrollController, mode = 'offer', offerView = 'default'}: Props) {
   const fallbackScrollController = useOfferTableScrollController();
   const controller = scrollController ?? fallbackScrollController;
   const inquiry = mode === 'inquiry';
+  const splitOffer = mode === 'offer' && offerView === 'split';
+  const frozenOnlySku = inquiry || splitOffer;
   const rows: TableDataRow[] = [];
   groups.forEach(group => {
     const latest = group.items[0];
@@ -172,16 +187,16 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
 
   return (
     <View style={styles.table}>
-      {renderHeader ? <TableHeader mode={mode} {...controller} /> : null}
+      {renderHeader ? <TableHeader mode={mode} offerView={offerView} {...controller} /> : null}
       <View style={styles.bodyTable}>
-        <View style={[styles.leftColumn, inquiry && styles.leftColumnInquiry]}>
+        <View style={[styles.leftColumn, frozenOnlySku && styles.leftColumnInquiry]}>
           {rows.map(row => (
-            <TableLeftCell key={row.rowKey} row={row} mode={mode} />
+            <TableLeftCell key={row.rowKey} row={row} mode={mode} offerView={offerView} />
           ))}
         </View>
-        <MiddleScroll rowKey="body" body mode={mode} {...controller}>
+        <MiddleScroll rowKey="body" body mode={mode} offerView={offerView} {...controller}>
           {rows.map(row => (
-            <TableMiddleRow key={row.rowKey} row={row} mode={mode} />
+            <TableMiddleRow key={row.rowKey} row={row} mode={mode} offerView={offerView} />
           ))}
         </MiddleScroll>
       </View>
@@ -189,23 +204,25 @@ export function OfferFrozenTable({groups, expandedKeys, onToggle, onPublisherPre
   );
 }
 
-export function OfferFrozenTableHeader({scrollController, mode = 'offer'}: {scrollController?: OfferTableScrollController; mode?: TableMode}) {
+export function OfferFrozenTableHeader({scrollController, mode = 'offer', offerView = 'default'}: {scrollController?: OfferTableScrollController; mode?: TableMode; offerView?: OfferView}) {
   const fallbackScrollController = useOfferTableScrollController();
-  return <TableHeader mode={mode} {...(scrollController ?? fallbackScrollController)} />;
+  return <TableHeader mode={mode} offerView={offerView} {...(scrollController ?? fallbackScrollController)} />;
 }
 
-function TableHeader({register, onSync, onBeginScroll, mode = 'offer'}: SyncProps & {mode?: TableMode}) {
+function TableHeader({register, onSync, onBeginScroll, mode = 'offer', offerView = 'default'}: SyncProps & {mode?: TableMode; offerView?: OfferView}) {
   const inquiry = mode === 'inquiry';
+  const splitOffer = mode === 'offer' && offerView === 'split';
+  const frozenOnlySku = inquiry || splitOffer;
   return (
     <View style={[styles.row, styles.header]}>
-      <View style={[styles.headerLeftFrozen, inquiry && styles.headerLeftFrozenInquiry]}>
-        <View style={[styles.leftSku, inquiry && styles.leftSkuInquiry, styles.headerColumn]}><Text style={[styles.headerText, styles.leftText]}>SKU</Text></View>
-        {!inquiry ? (
+      <View style={[styles.headerLeftFrozen, frozenOnlySku && styles.headerLeftFrozenInquiry]}>
+        <View style={[styles.leftSku, frozenOnlySku && styles.leftSkuInquiry, styles.headerColumn]}><Text style={[styles.headerText, styles.leftText]}>SKU</Text></View>
+        {!frozenOnlySku ? (
           <View style={[styles.leftPrice, styles.headerColumn, styles.headerPriceColumn]}><Text style={[styles.headerText, styles.rightText]}>价格·商家</Text></View>
         ) : null}
       </View>
-      <MiddleScroll rowKey="header" register={register} onSync={onSync} onBeginScroll={onBeginScroll} mode={mode}>
-        {getTableColumns(mode).map(column => (
+      <MiddleScroll rowKey="header" register={register} onSync={onSync} onBeginScroll={onBeginScroll} mode={mode} offerView={offerView}>
+        {getTableColumns(mode, offerView).map(column => (
           <View key={column.key} style={[styles.headerMiddleCell, {width: column.width}]}>
             <Text style={[styles.headerText, styles.centerText]}>{column.title}</Text>
           </View>
@@ -237,13 +254,15 @@ type TableDataRow = {
   onPress: () => void;
 };
 
-function TableLeftCell({row, mode = 'offer'}: {row: TableDataRow; mode?: TableMode}) {
+function TableLeftCell({row, mode = 'offer', offerView = 'default'}: {row: TableDataRow; mode?: TableMode; offerView?: OfferView}) {
   const inquiry = mode === 'inquiry';
+  const splitOffer = mode === 'offer' && offerView === 'split';
+  const frozenOnlySku = inquiry || splitOffer;
   const priceBadge = getPriceBadge(row.item);
   return (
     <View style={[styles.bodyRow, row.highlighted && styles.highlightedRow, row.publisher && styles.publisherRow]}>
-      <Pressable onPress={row.onPress} style={({pressed}) => [styles.leftFrozen, inquiry && styles.leftFrozenInquiry, row.publisher && styles.publisherLeftFrozen, row.highlighted && styles.highlightedCell, pressed && styles.pressed]}>
-        <View style={[styles.leftSku, !inquiry && row.publisher && styles.publisherLeftSku, inquiry && styles.leftSkuInquiry]}>
+      <Pressable onPress={row.onPress} style={({pressed}) => [styles.leftFrozen, frozenOnlySku && styles.leftFrozenInquiry, row.publisher && styles.publisherLeftFrozen, row.highlighted && styles.highlightedCell, pressed && styles.pressed]}>
+        <View style={[styles.leftSku, !frozenOnlySku && row.publisher && styles.publisherLeftSku, frozenOnlySku && styles.leftSkuInquiry]}>
           <View style={styles.leftTitleLine}>
             {row.publisher ? (
               <View style={styles.publisherMiniIcon}>
@@ -259,7 +278,7 @@ function TableLeftCell({row, mode = 'offer'}: {row: TableDataRow; mode?: TableMo
             <Text style={styles.leftSkuMeta} numberOfLines={1}>{row.leftSkuMeta || '-'}</Text>
           ) : null}
         </View>
-        {!inquiry ? (
+        {!frozenOnlySku ? (
           <View style={[styles.leftPrice, row.publisher && styles.publisherLeftPrice]}>
             <View style={styles.priceLine}>
               {priceBadge ? <Text style={styles.lowPriceBadge}>{priceBadge}</Text> : null}
@@ -293,24 +312,50 @@ function getInquiryTableValues(row: TableDataRow) {
   ];
 }
 
-function TableMiddleRow({row, mode = 'offer'}: {row: TableDataRow; mode?: TableMode}) {
+function getOfferSplitTableValues(row: TableDataRow) {
+  return [
+    row.price || '协商',
+    row.leftMeta || '-',
+    formatLocation(clean(row.item?.goodsLocation) || clean(row.item?.region)),
+    clean(row.item?.tags) || '-',
+    clean(row.item?.feedingType) || '-',
+    clean(row.item?.weight) || '-',
+  ];
+}
+
+function TableMiddleRow({row, mode = 'offer', offerView = 'default'}: {row: TableDataRow; mode?: TableMode; offerView?: OfferView}) {
   const inquiry = mode === 'inquiry';
-  const scrollColumns = getTableColumns(mode);
-  const values = inquiry ? getInquiryTableValues(row) : getOfferTableValues(row.item);
+  const splitOffer = mode === 'offer' && offerView === 'split';
+  const scrollColumns = getTableColumns(mode, offerView);
+  const values = inquiry ? getInquiryTableValues(row) : splitOffer ? getOfferSplitTableValues(row) : getOfferTableValues(row.item);
+  const priceBadge = getPriceBadge(row.item);
   return (
-    <View style={[styles.bodyMiddleRow, {width: getScrollWidth(mode)}, row.highlighted && styles.highlightedRow, row.publisher && styles.publisherRow]}>
+    <View style={[styles.bodyMiddleRow, {width: getScrollWidth(mode, offerView)}, row.highlighted && styles.highlightedRow, row.publisher && styles.publisherRow]}>
       {scrollColumns.map((column, index) => (
         <Pressable key={column.key} onPress={row.onPress} style={({pressed}) => [styles.middleCell, row.highlighted && styles.highlightedCell, pressed && styles.pressed, {width: column.width}]}>
-          <Text
-            style={inquiry && column.key === 'price' ? [styles.middlePriceText, values[index] === '协商' && styles.middleText] : styles.middleText}
-            numberOfLines={1}>
-            {values[index]}
-          </Text>
+          {splitOffer && column.key === 'price' ? (
+            <View style={styles.splitPriceLine}>
+              <Text style={[styles.priceSplit, values[index] === '协商' && styles.negotiate]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{values[index]}</Text>
+              {priceBadge ? <Text style={styles.lowPriceBadge}>{priceBadge}</Text> : null}
+            </View>
+          ) : (
+            <Text
+              style={getMiddleTextStyle(column.key, values[index], inquiry, splitOffer)}
+              numberOfLines={1}>
+              {values[index]}
+            </Text>
+          )}
         </Pressable>
       ))}
       <RowSeparator type={row.separator ?? 'solid'} shadow={row.separatorShadow || row.groupEndShadow} />
     </View>
   );
+}
+
+function getMiddleTextStyle(columnKey: string, value: string, inquiry: boolean, splitOffer: boolean) {
+  if (inquiry && columnKey === 'price') return [styles.middlePriceText, value === '协商' && styles.middleText];
+  if (splitOffer && columnKey === 'merchant') return styles.merchantSplit;
+  return styles.middleText;
 }
 
 function RowSeparator({type, shadow = false}: {type: 'solid' | 'dashed'; shadow?: boolean}) {
@@ -340,7 +385,7 @@ function RowSeparator({type, shadow = false}: {type: 'solid' | 'dashed'; shadow?
   );
 }
 
-function MiddleScroll({rowKey, body = false, mode = 'offer', register, onSync, onBeginScroll, children}: SyncProps & {rowKey: string; body?: boolean; mode?: TableMode; children: React.ReactNode}) {
+function MiddleScroll({rowKey, body = false, mode = 'offer', offerView = 'default', register, onSync, onBeginScroll, children}: SyncProps & {rowKey: string; body?: boolean; mode?: TableMode; offerView?: OfferView; children: React.ReactNode}) {
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => onSync(rowKey, event.nativeEvent.contentOffset.x);
   return (
     <ScrollView
@@ -353,7 +398,7 @@ function MiddleScroll({rowKey, body = false, mode = 'offer', register, onSync, o
       onMomentumScrollBegin={() => onBeginScroll(rowKey)}
       onScroll={handleScroll}
       style={styles.middleViewport}
-      contentContainerStyle={[body ? styles.bodyMiddleContent : styles.middleContent, {width: getScrollWidth(mode)}]}>
+      contentContainerStyle={[body ? styles.bodyMiddleContent : styles.middleContent, {width: getScrollWidth(mode, offerView)}]}>
       {children}
     </ScrollView>
   );
@@ -480,6 +525,9 @@ const styles = StyleSheet.create({
   middleCell: {paddingHorizontal: 8, justifyContent: 'center', borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: '#EDF2F1'},
   middleText: {color: colors.textSecondary, fontSize: 12, lineHeight: 17, textAlign: 'left'},
   middlePriceText: {color: colors.price, fontSize: 12, lineHeight: 17, fontWeight: '800', textAlign: 'left'},
+  priceSplit: {flexShrink: 1, minWidth: 0, color: colors.price, fontSize: 14, lineHeight: 19, fontWeight: '800', textAlign: 'left'},
+  merchantSplit: {color: colors.text, fontSize: 12, lineHeight: 17, textAlign: 'left'},
+  splitPriceLine: {flexDirection: 'row', alignItems: 'center', gap: 3, minWidth: 0},
   priceLine: {width: '100%', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-start', gap: 3},
   price: {flexShrink: 1, minWidth: 0, color: colors.price, fontSize: 14, lineHeight: 19, fontWeight: '800', textAlign: 'right'},
   priceWithBadge: {maxWidth: 36},

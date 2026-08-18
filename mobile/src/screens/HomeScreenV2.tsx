@@ -17,13 +17,13 @@ import {
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import Svg, {Circle, Path} from 'react-native-svg';
+import Svg, {Circle, Path, Rect} from 'react-native-svg';
 import {mooketApi} from '../api/mooketApi';
 import {FilterBar, type FilterDef, type FilterKey} from '../components/detail/FilterBar';
 import {FilterPanelSheet, MultiSelectChips} from '../components/detail/FilterPanelSheet';
 import {MiniTrendChart} from '../components/home/MiniTrendChart';
 import {OfferActionSheetFast} from '../components/home/OfferActionSheetFast';
-import {OfferFrozenTable, OfferFrozenTableHeader, useOfferTableScrollController} from '../components/home/OfferFrozenTable';
+import {OfferFrozenTable, OfferFrozenTableHeader, useOfferTableScrollController, type OfferView} from '../components/home/OfferFrozenTable';
 import {DEFAULT_CATEGORY} from '../config/env';
 import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
@@ -141,6 +141,7 @@ export function HomeScreenV2({navigation}: Props) {
   const insets = useSafeAreaInsets();
   const offerTableScrollController = useOfferTableScrollController();
   const [activeTab, setActiveTab] = useState<MainTab>('offer');
+  const [offerView, setOfferView] = useState<OfferView>('default');
   const feedListData = useMemo(() => [{key: 'header'}, {key: 'intro'}, {key: 'filters'}, {key: 'offer-table'}], []);
   const [category, setCategory] = useState(DEFAULT_CATEGORY);
   const [hotSearches, setHotSearches] = useState<HotSearchItem[]>([]);
@@ -572,6 +573,10 @@ export function HomeScreenV2({navigation}: Props) {
     setActiveFilter(null);
   }
 
+  function toggleOfferView() {
+    setOfferView(prev => (prev === 'default' ? 'split' : 'default'));
+  }
+
   function handleFilterPress(key: FilterKey) {
     if (key === 'category') {
       const currentIndex = categoryOptions.indexOf(category);
@@ -723,6 +728,11 @@ export function HomeScreenV2({navigation}: Props) {
           <TopTab title="自选" active={activeTab === 'self'} onPress={() => handleMainTabPress('self')} />
           <TopTab title="发现" active={activeTab === 'discover'} onPress={() => handleMainTabPress('discover')} />
         </View>
+        {activeTab === 'offer' ? (
+          <Pressable onPress={toggleOfferView} hitSlop={8} style={styles.viewToggleButton}>
+            <TableViewIcon split={offerView === 'split'} />
+          </Pressable>
+        ) : null}
       </View>
 
       {activeTab !== 'self' && activeTab !== 'discover' ? (
@@ -861,7 +871,7 @@ export function HomeScreenV2({navigation}: Props) {
                 return (
                   <View style={styles.filterBlock}>
                     <FilterBar filters={filterDefs} active={activeFilter as FilterKey | null} onPress={handleFilterPress} onBottomLayout={setFilterPanelTop} />
-                    <OfferFrozenTableHeader scrollController={offerTableScrollController} mode={feedType} />
+                    <OfferFrozenTableHeader scrollController={offerTableScrollController} mode={feedType} offerView={offerView} />
                   </View>
                 );
               }
@@ -873,6 +883,7 @@ export function HomeScreenV2({navigation}: Props) {
                     renderHeader={false}
                     scrollController={offerTableScrollController}
                     mode={feedType}
+                    offerView={offerView}
                     onToggle={key => {
                       setExpandedKeys(prev => {
                         const next = new Set(prev);
@@ -2558,6 +2569,15 @@ function ChevronDownIcon() {
   );
 }
 
+function TableViewIcon({split}: {split: boolean}) {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+      <Rect x="3" y="4" width="18" height="16" rx="2" stroke={colors.primary} strokeWidth={1.8} />
+      <Path d={split ? 'M8.5 4v16M13.5 4v16M18.5 4v16' : 'M9 4v16M15 4v16'} stroke={colors.primary} strokeWidth={1.8} />
+    </Svg>
+  );
+}
+
 function CompanyTinyIcon() {
   return (
     <Svg width={13} height={13} viewBox="0 0 14 14" fill="none">
@@ -2615,6 +2635,7 @@ const styles = StyleSheet.create({
   headerBlock: {backgroundColor: '#FFFFFF', paddingHorizontal: 14, paddingBottom: 6},
   topLine: {height: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   mainTabs: {flexDirection: 'row', alignItems: 'center', gap: 12},
+  viewToggleButton: {width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primaryLight, alignItems: 'center', justifyContent: 'center'},
   topTab: {height: 52, justifyContent: 'center'},
   topTabText: {color: '#8D9996', fontSize: 16, fontWeight: '700', lineHeight: 22},
   topTabTextActive: {color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: '800'},
