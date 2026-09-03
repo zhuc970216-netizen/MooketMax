@@ -1,0 +1,57 @@
+spring:
+  data:
+    redis:
+      host: 43.139.56.124
+      port: 6379
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+mooket:
+  internal:
+    sql:
+      enabled: false
+      allow-writes: false
+  datasource:
+    primary:
+      jdbc-url: jdbc:postgresql://localhost:5432/mooket_db?charSet=UTF-8
+      username: postgres
+      password: postgres
+    mysql:
+      enabled: false
+      jdbc-url: jdbc:mysql://localhost:3306/dummy?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai
+      username: dummy
+      password: dummy
+    erp:
+      enabled: false
+      jdbc-url: jdbc:mysql://localhost:3306/dummy?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai
+      username: dummy
+      password: dummy
+    uac:
+      enabled: false
+      jdbc-url: jdbc:mysql://localhost:3306/dummy?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai
+      username: dummy
+      password: dummy
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+logging:
+  level:
+    root: INFO
+    com.mooket.social: DEBUG
+    com.mooket.social.mapper: DEBUG
+    org.springframework.jdbc: DEBUG
