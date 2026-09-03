@@ -6,21 +6,22 @@ import {DataDashboard} from '../components/detail/DataDashboard';
 import {DetailTopBar} from '../components/detail/DetailTopBar';
 import {SelfSelectButton} from '../components/detail/SelfSelectButton';
 import {SummaryRowCard} from '../components/detail/SummaryRowCard';
-import {TabAndSortBar, type OfferTab, type SortMode} from '../components/detail/TabAndSortBar';
+import {OfferInquiryTabs, TabAndSortBar, type OfferTab, type SortMode} from '../components/detail/TabAndSortBar';
 import {ErrorState} from '../components/common/ErrorState';
 import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
 import type {ProductDetail, ProductSummary} from '../types/api';
+import {getTabCount, getTabFactoryCount, getTabMerchantCount} from '../utils/tabStats';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Product'>;
 
 const pageSize = 20;
 
 export function ProductScreen({navigation, route}: Props) {
-  const {productId, category, productName, searchKeyword: routeSearchKeyword} = route.params;
+  const {productId, category, productName, searchKeyword: routeSearchKeyword, initialTab} = route.params;
   const searchKeyword = routeSearchKeyword ?? productName;
   const [data, setData] = useState<ProductDetail | null>(null);
-  const [tab, setTab] = useState<OfferTab>('offer');
+  const [tab, setTab] = useState<OfferTab>(initialTab ?? 'offer');
   const [sort, setSort] = useState<SortMode>({kind: 'comprehensive'});
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -29,6 +30,16 @@ export function ProductScreen({navigation, route}: Props) {
   const requestSortParam = useMemo(
     () => sortToParam(sort),
     [sort],
+  );
+  const handleTabChange = useCallback(
+    (nextTab: OfferTab) => {
+      if (nextTab === tab) return;
+      setData(null);
+      setPage(1);
+      setError(null);
+      setTab(nextTab);
+    },
+    [tab],
   );
   const summaries = data?.summaries ?? [];
   const currentProductName = data?.productName || productName;
@@ -98,17 +109,39 @@ export function ProductScreen({navigation, route}: Props) {
         onBack={() => navigation.goBack()}
         onSearchPress={() => {
           navigation.popToTop();
-          navigation.navigate('Search', {category, keyword: searchKeyword});
+          navigation.navigate('Search', {category, keyword: searchKeyword, initialTab: tab});
         }}
         tags={[
           {
             text: productName,
             onClose: () => {
               navigation.popToTop();
-              navigation.navigate('Search', {category, keyword: searchKeyword});
+              navigation.navigate('Search', {category, keyword: searchKeyword, initialTab: tab});
             },
           },
         ]}
+        topSlot={
+          <OfferInquiryTabs
+            tab={tab}
+            onTabChange={handleTabChange}
+            showMerchant
+            onMerchantPress={() => {
+              navigation.replace('MerchantSearchResults', {
+                category,
+                searchKeyword,
+                tags: [productName],
+                merchantSearch: {
+                  display: searchKeyword,
+                  matchType: 'product',
+                  type: '产品',
+                  targetId: productId,
+                  productName: currentProductName,
+                },
+                target: {screen: 'Product', productId, productName: currentProductName},
+              });
+            }}
+          />
+        }
         rightAction={
           <SelfSelectButton category={category} card={selfSelectCard} payload={selfSelectPayload} />
         }
@@ -135,12 +168,12 @@ export function ProductScreen({navigation, route}: Props) {
                 title={data.productName}
                 mainStat={{
                   label: tab === 'offer' ? '近2日报盘' : '近2日求购',
-                  value: data.offerCount,
+                  value: getTabCount(data, tab),
                 }}
                 priceRange={{min: data.priceMin, max: data.priceMax}}
                 stats={[
-                  {label: '商家数', value: data.merchantCount},
-                  {label: '工厂数', value: data.factoryCount},
+                  {label: '商家数', value: getTabMerchantCount(data, tab)},
+                  {label: '工厂数', value: getTabFactoryCount(data, tab)},
                 ]}
               />
               <View style={styles.gap} />
@@ -148,32 +181,26 @@ export function ProductScreen({navigation, route}: Props) {
           }
           renderSectionHeader={() => (
             <View style={styles.stickyHeader}>
-              <TabAndSortBar tab={tab} onTabChange={setTab} sort={sort} onSortChange={setSort} />
+              <TabAndSortBar tab={tab} onTabChange={handleTabChange} sort={sort} onSortChange={setSort} showTabs={false} />
             </View>
           )}
           renderItem={({item}) => (
             <SummaryRowCard
-              title={
-                item.countryFactory ||
-                [item.country, item.factoryNo].filter(Boolean).join(' ') ||
-                '--'
-              }
+              title={buildCountryFactoryTitle(item.country, item.factoryNo, item.countryFactory)}
               merchantNames={item.merchantNames}
               merchantCount={item.merchantCount}
-              count={item.offerCount}
+              count={getTabCount(item, tab)}
               countLabel={tab === 'offer' ? '报盘' : '求购'}
               priceMin={item.priceMin}
               priceMax={item.priceMax}
-              onPress={
-                item.country && item.factoryNo
-                  ? () =>
-                      navigation.navigate('CountryFactoryProduct', {
-                        country: item.country!,
-                        factoryNo: item.factoryNo!,
-                        productName: data.productName,
-                        category,
-                      })
-                  : undefined
+              onPress={() =>
+                navigation.navigate('CountryFactoryProduct', {
+                  country: item.country ?? '',
+                  factoryNo: item.factoryNo ?? '',
+                  productName: data.productName,
+                  category,
+                  initialTab: tab,
+                })
               }
             />
           )}
@@ -204,6 +231,25 @@ function sortToParam(sort: SortMode): string {
   return sort.order === 'asc' ? 'price_asc' : sort.order === 'desc' ? 'price_desc' : 'comprehensive';
 }
 
+function buildCountryFactoryTitle(
+  country?: string | null,
+  factoryNo?: string | null,
+  countryFactory?: string | null,
+): string {
+  const c = country?.trim();
+  const f = factoryNo?.trim();
+  if (c && f) {
+    return countryFactory?.trim() || `${c} ${f}`;
+  }
+  if (c && !f) {
+    return `${c} 厂号不限`;
+  }
+  if (!c && f) {
+    return `国家不限 ${f}`;
+  }
+  return '国家厂号不限';
+}
+
 function mergeSummaries(prev: ProductSummary[], incoming: ProductSummary[]): ProductSummary[] {
   const seen = new Set(prev.map(item => `${item.country ?? ''}-${item.factoryNo ?? ''}`));
   const next = prev.slice();
@@ -225,6 +271,12 @@ const styles = StyleSheet.create({
   loading: {
     paddingVertical: 48,
     alignItems: 'center',
+  },
+  topTabs: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#EFF5F3',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   gap: {
     height: 12,

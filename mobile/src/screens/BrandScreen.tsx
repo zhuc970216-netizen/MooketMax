@@ -6,21 +6,22 @@ import {BrandDashboard} from '../components/detail/BrandDashboard';
 import {CountrySummaryRowCard} from '../components/detail/CountrySummaryRowCard';
 import {DetailTopBar} from '../components/detail/DetailTopBar';
 import {SelfSelectButton} from '../components/detail/SelfSelectButton';
-import {TabAndSortBar, type OfferTab, type SortMode} from '../components/detail/TabAndSortBar';
+import {OfferInquiryTabs, TabAndSortBar, type OfferTab, type SortMode} from '../components/detail/TabAndSortBar';
 import {ErrorState} from '../components/common/ErrorState';
 import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
 import type {BrandDetail, BrandProductSummary} from '../types/api';
+import {getTabCount, getTabFactoryCount, getTabProductCount} from '../utils/tabStats';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Brand'>;
 
 const pageSize = 20;
 
 export function BrandScreen({navigation, route}: Props) {
-  const {brandName, category, searchKeyword: routeSearchKeyword} = route.params;
+  const {brandName, category, searchKeyword: routeSearchKeyword, initialTab} = route.params;
   const searchKeyword = routeSearchKeyword ?? brandName;
   const [data, setData] = useState<BrandDetail | null>(null);
-  const [tab, setTab] = useState<OfferTab>('offer');
+  const [tab, setTab] = useState<OfferTab>(initialTab ?? 'offer');
   const [sort, setSort] = useState<SortMode>({kind: 'comprehensive'});
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -95,17 +96,38 @@ export function BrandScreen({navigation, route}: Props) {
         onBack={() => navigation.goBack()}
         onSearchPress={() => {
           navigation.popToTop();
-          navigation.navigate('Search', {category, keyword: searchKeyword});
+          navigation.navigate('Search', {category, keyword: searchKeyword, initialTab: tab});
         }}
         tags={[
           {
             text: brandName,
             onClose: () => {
               navigation.popToTop();
-              navigation.navigate('Search', {category, keyword: searchKeyword});
+              navigation.navigate('Search', {category, keyword: searchKeyword, initialTab: tab});
             },
           },
         ]}
+        topSlot={
+          <OfferInquiryTabs
+            tab={tab}
+            onTabChange={setTab}
+            showMerchant
+            onMerchantPress={() => {
+              navigation.replace('MerchantSearchResults', {
+                category,
+                searchKeyword,
+                tags: [brandName],
+                merchantSearch: {
+                  display: searchKeyword,
+                  matchType: 'brand',
+                  type: '品牌',
+                  brandName,
+                },
+                target: {screen: 'Brand', brandName},
+              });
+            }}
+          />
+        }
         rightAction={
           <SelfSelectButton category={category} card={selfSelectCard} payload={selfSelectPayload} />
         }
@@ -131,17 +153,21 @@ export function BrandScreen({navigation, route}: Props) {
               <BrandDashboard
                 brandName={data.brandName || brandName}
                 isInquiry={tab === 'inquiry'}
-                factoryCount={data.factoryCount}
-                productCount={data.productCount}
+                factoryCount={getTabFactoryCount(data, tab)}
+                productCount={getTabProductCount(data, tab)}
                 todayOfferCount={data.todayOfferCount}
+                yesterdayOfferCount={data.yesterdayOfferCount}
+                totalOfferCount={data.totalOfferCount}
                 todayInquiryCount={data.todayInquiryCount}
+                yesterdayInquiryCount={data.yesterdayInquiryCount}
+                totalInquiryCount={data.totalInquiryCount}
               />
               <View style={styles.gap} />
             </View>
           }
           renderSectionHeader={() => (
             <View style={styles.stickyHeader}>
-              <TabAndSortBar tab={tab} onTabChange={setTab} sort={sort} onSortChange={setSort} />
+              <TabAndSortBar tab={tab} onTabChange={setTab} sort={sort} onSortChange={setSort} showTabs={false} />
             </View>
           )}
           renderItem={({item}) => (
@@ -149,7 +175,7 @@ export function BrandScreen({navigation, route}: Props) {
               title={item.productName}
               factoryNos={parseFactoryNos(item.factoryNos)}
               factoryCount={item.factoryCount}
-              count={item.offerCount}
+              count={getTabCount(item, tab)}
               countLabel={tab === 'offer' ? '报盘' : '求购'}
               priceMin={item.priceMin}
               priceMax={item.priceMax}
@@ -158,6 +184,7 @@ export function BrandScreen({navigation, route}: Props) {
                   brandName: data.brandName || brandName,
                   productName: item.productName,
                   category,
+                  initialTab: tab,
                 })
               }
             />
@@ -210,6 +237,7 @@ function mergeSummaries(prev: BrandProductSummary[], incoming: BrandProductSumma
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   loading: {paddingVertical: 48, alignItems: 'center'},
+  topTabs: {borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#EFF5F3', borderBottomWidth: 1, borderBottomColor: colors.border},
   gap: {height: 12, backgroundColor: '#F4FBF8'},
   footer: {alignItems: 'center', paddingVertical: 16},
   footerText: {color: '#9DA4A3', fontSize: 12},

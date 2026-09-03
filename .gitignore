@@ -8,6 +8,7 @@ mjzd.rar
 /.kiro/
 /.vscode/
 /user.keystore
+.mcp.json
 
 # === Shell scripts (debugging/temp) ===
 *.sh
@@ -16,6 +17,7 @@ mjzd.rar
 *.apk
 *.jar
 *.aar
+release/
 build/
 target/
 .gradle/
@@ -32,6 +34,13 @@ Thumbs.db
 social/target/
 social/*.log
 
+# === Local deployment secrets and data ===
+deploy/.env
+deploy/certificates/
+deploy/backups/
+*.dump
+*.backup
+
 # === Mobile build ===
 mobile/android/app/build/
 mobile/android/.gradle/
@@ -45,6 +54,7 @@ mobile/ios/build/
 *.xlsx
 *.xls
 *.png
+!mobile/assets/auto-sync-guide.png
 *.jpg
 ~$*
 
@@ -53,6 +63,7 @@ temp_*.py
 query_stat*.py
 verify_sql.py
 sync_log.txt
+tsc-check.log
 brand_data.json
 cards_check.json
 factory_tier_data.sql

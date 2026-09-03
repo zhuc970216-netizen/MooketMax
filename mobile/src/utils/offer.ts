@@ -27,6 +27,88 @@ export function extractCity(location?: string | null): string {
   return parts[parts.length - 1] ?? '';
 }
 
+const municipalities = ['北京', '上海', '天津', '重庆'];
+const provinceNames = [
+  '黑龙江',
+  '内蒙古',
+  '新疆',
+  '广西',
+  '宁夏',
+  '西藏',
+  '香港',
+  '澳门',
+  '河北',
+  '山西',
+  '辽宁',
+  '吉林',
+  '江苏',
+  '浙江',
+  '安徽',
+  '福建',
+  '江西',
+  '山东',
+  '河南',
+  '湖北',
+  '湖南',
+  '广东',
+  '海南',
+  '四川',
+  '贵州',
+  '云南',
+  '陕西',
+  '甘肃',
+  '青海',
+  '台湾',
+];
+
+export function formatGoodsLocation(location?: string | null): string {
+  const raw = location?.trim();
+  if (!raw) {
+    return '';
+  }
+
+  const compact = raw
+    .replace(/[\/\\,，、·\s]+/g, '')
+    .replace(/^中国/, '');
+  if (!compact) {
+    return '';
+  }
+
+  const municipality = municipalities.find(name => compact.startsWith(name));
+  if (municipality) {
+    return municipality;
+  }
+
+  const province = provinceNames.find(name => compact.startsWith(name));
+  if (province) {
+    const rest = stripAdminPrefix(compact.slice(province.length));
+    const city = stripAdminSuffix(extractCityPart(rest));
+    return city && city !== province ? `${province}·${city}` : province;
+  }
+
+  return stripAdminSuffix(compact);
+}
+
+function stripAdminPrefix(value: string) {
+  return value
+    .replace(/^(省|市|特别行政区|维吾尔自治区|壮族自治区|回族自治区|自治区)/, '')
+    .replace(/^省/, '');
+}
+
+function extractCityPart(value: string) {
+  if (!value) {
+    return '';
+  }
+  const match = value.match(/^(.+?(?:自治州|地区|盟|市|县|区))/);
+  return match?.[1] ?? value;
+}
+
+function stripAdminSuffix(value: string) {
+  return value
+    .replace(/^(北京|上海|天津|重庆)(市|城区|市辖区|辖区)?$/, '$1')
+    .replace(/(维吾尔自治区|壮族自治区|回族自治区|特别行政区|自治区|自治州|地区|盟|省|市|县|区|城区|市辖区|辖区)$/g, '');
+}
+
 export function formatPublishTime(time?: string | null): string {
   if (!time) {
     return '';

@@ -176,7 +176,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   priceMuted: {
-    color: '#9DA4A3',
+    color: colors.primary,
+    fontSize: 14,
   },
   priceUnit: {
     fontFamily: fonts.manropeRegular,

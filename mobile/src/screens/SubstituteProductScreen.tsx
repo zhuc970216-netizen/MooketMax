@@ -48,6 +48,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
   const [error, setError] = useState<string | null>(null);
   const [originalText, setOriginalText] = useState<OriginalTextPayload | null>(null);
   const [activeFilter, setActiveFilter] = useState<LocalFilterKey | null>(null);
+  const [filterPanelTop, setFilterPanelTop] = useState(0);
   const [famousOnly, setFamousOnly] = useState(false);
   const [regions, setRegions] = useState<Set<string>>(new Set());
   const [goodsTypes, setGoodsTypes] = useState<Set<string>>(new Set());
@@ -174,10 +175,42 @@ export function SubstituteProductScreen({navigation, route}: Props) {
   const allTags = useMemo(() => detail?.filterOptions?.tags ?? [], [detail?.filterOptions?.tags]);
 
   const filters = [
-    {key: 'region' as const, label: '地区', hasSelection: regions.size > 0},
-    {key: 'goodsType' as const, label: '货物类型', hasSelection: goodsTypes.size > 0},
-    {key: 'feedingMethod' as const, label: '饲养方式', hasSelection: feedingMethods.size > 0},
-    {key: 'tag' as const, label: '价格/标签', hasSelection: tagFilters.size > 0},
+    {
+      key: 'region' as const,
+      label: getSelectedFilterLabel(regions, '地区'),
+      hasSelection: regions.size > 0,
+      onClear: regions.size > 0 ? () => {
+        setRegions(new Set());
+        setActiveFilter(null);
+      } : undefined,
+    },
+    {
+      key: 'goodsType' as const,
+      label: getSelectedFilterLabel(goodsTypes, '货物类型'),
+      hasSelection: goodsTypes.size > 0,
+      onClear: goodsTypes.size > 0 ? () => {
+        setGoodsTypes(new Set());
+        setActiveFilter(null);
+      } : undefined,
+    },
+    {
+      key: 'feedingMethod' as const,
+      label: getSelectedFilterLabel(feedingMethods, '饲养方式'),
+      hasSelection: feedingMethods.size > 0,
+      onClear: feedingMethods.size > 0 ? () => {
+        setFeedingMethods(new Set());
+        setActiveFilter(null);
+      } : undefined,
+    },
+    {
+      key: 'tag' as const,
+      label: getSelectedFilterLabel(tagFilters, '价格/标签'),
+      hasSelection: tagFilters.size > 0,
+      onClear: tagFilters.size > 0 ? () => {
+        setTagFilters(new Set());
+        setActiveFilter(null);
+      } : undefined,
+    },
   ];
 
   return (
@@ -250,6 +283,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
                           if (key === 'product' || key === 'countryFactory') return;
                           setActiveFilter(key as LocalFilterKey);
                         }}
+                        onBottomLayout={setFilterPanelTop}
                       />
                     </View>
                   </View>
@@ -260,6 +294,9 @@ export function SubstituteProductScreen({navigation, route}: Props) {
             <MerchantOfferGroupCard
               group={item}
               isInquiry={tab === 'inquiry'}
+              country={country}
+              factoryNo={selectedFactory}
+              productName={productName}
               onCopyPhone={item.merchantPhone ?? undefined}
               onDial={item.merchantPhone ?? undefined}
               onViewOriginalText={value => setOriginalText(value)}
@@ -284,6 +321,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'region'}
+        topOffset={filterPanelTop}
         title="地区"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -299,6 +337,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
       </FilterPanelSheet>
       <FilterPanelSheet
         visible={activeFilter === 'goodsType'}
+        topOffset={filterPanelTop}
         title="货物类型"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -315,6 +354,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'feedingMethod'}
+        topOffset={filterPanelTop}
         title="饲养方式"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -331,6 +371,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'tag'}
+        topOffset={filterPanelTop}
         title="价格/标签"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -342,6 +383,7 @@ export function SubstituteProductScreen({navigation, route}: Props) {
           options={allTags.length ? allTags : ['大日龄', '可开证', '整柜', '一口价']}
           selected={tagFilters}
           onToggle={value => setTagFilters(prev => toggle(prev, value))}
+          groupSimilarTags
         />
       </FilterPanelSheet>
 
@@ -515,6 +557,11 @@ function sortToParam(sort: MerchantSortMode): string {
   if (sort.kind === 'comprehensive') return 'comprehensive';
   if (sort.kind === 'publish_time') return 'publish_time';
   return sort.order === 'asc' ? 'price_asc' : sort.order === 'desc' ? 'price_desc' : 'comprehensive';
+}
+
+function getSelectedFilterLabel(values: Set<string>, fallback: string) {
+  if (values.size === 1) return Array.from(values)[0];
+  return values.size > 1 ? `${fallback}(${values.size})` : fallback;
 }
 
 function formatPriceText(min?: number | null, max?: number | null): string {

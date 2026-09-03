@@ -65,7 +65,7 @@ public class HomeStatServiceImpl implements HomeStatService {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     @Override
-    @CacheEvict(value = {"homeHotSearch", "homeStatData", "homeCards", "recentSearchCards", "selfSelectCards"}, allEntries = true)
+    @CacheEvict(value = {"homeHotSearch", "homeStatData", "homeHotOfferSkus", "homeCards", "recentSearchCards", "selfSelectCards"}, allEntries = true)
     @Transactional
     public void computeAllStats() {
         LocalDate today = LocalDate.now();
@@ -898,6 +898,41 @@ public class HomeStatServiceImpl implements HomeStatService {
         String statTime = LocalDateTime.now().format(TIME_FORMATTER);
 
         return new HomeStatData(offerStr, inquiryStr, merchantStr, statTime);
+    }
+
+    @Override
+    @Cacheable(value = "homeHotOfferSkus", key = "#category + ':' + #limit")
+    public List<HomeHotSkuDTO> getHomeHotOfferSkus(String category, int limit) {
+        int safeLimit = Math.max(1, Math.min(limit, 30));
+        List<BizOfferMapper.HomeHotSkuAgg> rows = bizOfferMapper.selectHomeHotSkus(category, "报盘", safeLimit);
+        List<HomeHotSkuDTO> result = new ArrayList<>();
+
+        for (BizOfferMapper.HomeHotSkuAgg row : rows) {
+            HomeHotSkuDTO dto = new HomeHotSkuDTO();
+            dto.setCountry(row.country);
+            dto.setFactoryNo(row.factoryNo);
+            dto.setProductId(row.productId);
+            dto.setProductName(row.productName);
+            dto.setPriceMin(row.priceMin);
+            dto.setPriceMax(row.priceMax);
+            dto.setOfferCount(row.offerCount);
+            dto.setMerchantCount(row.merchantCount != null && row.merchantCount > 0 ? row.merchantCount : 1);
+
+            List<BizOfferMapper.HomeHotSkuTrendPoint> trendRows = bizOfferMapper.selectHomeHotSkuTrend(
+                    row.country, row.factoryNo, row.productName, category, "报盘");
+            List<HomeHotSkuDTO.TrendPointDTO> trendPoints = new ArrayList<>();
+            for (BizOfferMapper.HomeHotSkuTrendPoint trendRow : trendRows) {
+                HomeHotSkuDTO.TrendPointDTO point = new HomeHotSkuDTO.TrendPointDTO();
+                point.setDate(trendRow.dataDate != null ? trendRow.dataDate.toString() : "");
+                point.setAvgPrice(trendRow.avgPrice != null ? trendRow.avgPrice.doubleValue() : null);
+                point.setOfferCount(trendRow.offerCount);
+                trendPoints.add(point);
+            }
+            dto.setTrendPoints(trendPoints);
+            result.add(dto);
+        }
+
+        return result;
     }
 
     @Override

@@ -1,5 +1,6 @@
 import {CURRENT_APP_VERSION, CURRENT_APP_VERSION_CODE} from '../config/env';
 import {apiClient, unwrap} from './client';
+import {normalizeFactoryNo, normalizeFactoryNoOrNull} from '../utils/factoryNo';
 import type {
   AppVersionInfo,
   AuthResult,
@@ -11,9 +12,11 @@ import type {
   FactoryDetail,
   FactoryPriceComparison,
   HomeCardsResponse,
+  HomeHotSku,
   HomeStatData,
   HotSearchItem,
   MerchantDetail,
+  OfferFeedPage,
   ProductDetail,
   RegisterRequest,
   SearchHistory,
@@ -26,6 +29,7 @@ import type {
 } from '../types/api';
 
 const DETAIL_REQUEST_TTL_MS = 5 * 60 * 1000;
+const OFFER_FEED_REQUEST_TTL_MS = 60 * 1000;
 
 type DetailRequestCacheEntry<T> = {
   expiresAt: number;
@@ -67,6 +71,16 @@ function withDetailCache<T>(key: string, loader: () => Promise<T>, ttlMs = DETAI
   return promise;
 }
 
+function buildRequestCacheKey(prefix: string, params: Record<string, unknown>) {
+  const entries = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .sort(([left], [right]) => left.localeCompare(right));
+
+  return `${prefix}:${entries
+    .map(([key, value]) => `${key}=${Array.isArray(value) ? value.join(',') : String(value)}`)
+    .join('&')}`;
+}
+
 export const mooketApi = {
   getHotSearchRecommendations(category: string) {
     return unwrap<HotSearchItem[]>(apiClient.get('api/v1/home/hot-search', {params: {category}}));
@@ -74,6 +88,10 @@ export const mooketApi = {
 
   getHomeStatData(category: string) {
     return unwrap<HomeStatData>(apiClient.get('api/v1/home/stat', {params: {category}}));
+  },
+
+  getHomeHotOfferSkus(category: string, limit = 3) {
+    return unwrap<HomeHotSku[]>(apiClient.get('api/v1/home/hot-offer-skus', {params: {category, limit}}));
   },
 
   getHomeCards(category: string, tab = 0) {
@@ -92,6 +110,42 @@ export const mooketApi = {
     return unwrap<SearchHistory[]>(apiClient.get('api/v1/search-history/self-select', {params: {limit}}));
   },
 
+  getOfferFeed(params: {
+    category: string;
+    type: 'offer' | 'inquiry';
+    keyword?: string;
+    merchantId?: number | string;
+    brandName?: string;
+    productName?: string;
+    country?: string | null;
+    factoryNo?: string | null;
+    goodsType?: string | null;
+    region?: string | null;
+    feedingType?: string | null;
+    tag?: string | null;
+    quotedOnly?: boolean;
+    realNameOnly?: boolean;
+    verifiedOnly?: boolean;
+    recentOnly?: boolean;
+    sortBy?: string;
+    page?: number;
+    pageSize?: number;
+    skipCache?: boolean;
+  }) {
+    const {skipCache, ...requestParams} = params;
+    const loader = () => unwrap<OfferFeedPage>(apiClient.get('api/v1/offers/feed', {params: requestParams}));
+
+    if (skipCache) {
+      return loader();
+    }
+
+    return withDetailCache(
+      buildRequestCacheKey('offerFeed', requestParams),
+      loader,
+      OFFER_FEED_REQUEST_TTL_MS,
+    );
+  },
+
   getSearchSuggestions(category: string, keyword: string) {
     return unwrap<SearchSuggest[]>(apiClient.get('api/v1/search/suggest', {params: {category, keyword}}));
   },
@@ -105,7 +159,7 @@ export const mooketApi = {
     country?: string | null;
     factoryNo?: string | null;
     brandId?: number | null;
-    merchantId?: number | null;
+    merchantId?: number | string | null;
   }) {
     // Remove null/undefined values to avoid sending "null" as string
     const cleanParams: Record<string, string | number> = {};
@@ -118,12 +172,11 @@ export const mooketApi = {
     // Re-apply self-select through its dedicated endpoint so the home screen
     // receives the newly added card as soon as it refreshes.
     if (params.isSelfSelect === 1) {
+      const selfSelectParams = {...cleanParams};
+      delete selfSelectParams.isSelfSelect;
       await unwrap<void>(
         apiClient.post('api/v1/search-history/self-select/add', null, {
-          params: {
-            searchWord: params.searchWord,
-            searchType: params.searchType,
-          },
+          params: selfSelectParams,
         }),
       );
     }
@@ -282,11 +335,12 @@ export const mooketApi = {
     page = 1,
     pageSize = 20,
   ) {
+    const normalizedFactoryNo = normalizeFactoryNo(factoryNo);
     return withDetailCache(
-      `factoryDetail:${country}:${factoryNo}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
+      `factoryDetail:${country}:${normalizedFactoryNo}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
       () => unwrap<FactoryDetail>(
         apiClient.get('api/v1/factory/detail', {
-          params: {country, factoryNo, category, type, sortBy, page, pageSize},
+          params: {country, factoryNo: normalizedFactoryNo, category, type, sortBy, page, pageSize},
         }),
       ),
     );
@@ -321,22 +375,24 @@ export const mooketApi = {
     page = 1,
     pageSize = 20,
   ) {
+    const normalizedFactoryNo = normalizeFactoryNo(factoryNo);
     return withDetailCache(
-      `countryFactoryProductDetail:${country}:${factoryNo}:${productName}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
+      `countryFactoryProductDetail:${country}:${normalizedFactoryNo}:${productName}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
       () => unwrap<CountryFactoryProductDetail>(
         apiClient.get('api/v1/country-factory-product', {
-          params: {country, factoryNo, productName, category, type, sortBy, page, pageSize},
+          params: {country, factoryNo: normalizedFactoryNo, productName, category, type, sortBy, page, pageSize},
         }),
       ),
     );
   },
 
   getSubstituteProducts(country: string, factoryNo: string, productName: string, category: string) {
+    const normalizedFactoryNo = normalizeFactoryNo(factoryNo);
     return withDetailCache(
-      `substituteProducts:${country}:${factoryNo}:${productName}:${category}`,
+      `substituteProducts:${country}:${normalizedFactoryNo}:${productName}:${category}`,
       () => unwrap<SubstituteProduct>(
         apiClient.get('api/v1/substitute/products', {
-          params: {country, factoryNo, productName, category},
+          params: {country, factoryNo: normalizedFactoryNo, productName, category},
         }),
       ),
     );
@@ -352,11 +408,12 @@ export const mooketApi = {
     page = 1,
     pageSize = 10,
   ) {
+    const normalizedFactoryNo = normalizeFactoryNo(factoryNo);
     return withDetailCache(
-      `substituteProductDetail:${country}:${factoryNo}:${productName}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
+      `substituteProductDetail:${country}:${normalizedFactoryNo}:${productName}:${category}:${type}:${sortBy}:${page}:${pageSize}`,
       () => unwrap<SubstituteProductDetail>(
         apiClient.get('api/v1/substitute/product/detail', {
-          params: {country, factoryNo, productName, category, type, sortBy, page, pageSize},
+          params: {country, factoryNo: normalizedFactoryNo, productName, category, type, sortBy, page, pageSize},
         }),
       ),
     );
@@ -370,11 +427,14 @@ export const mooketApi = {
     offerType = '报盘',
     days = 30,
   ) {
+    const normalizedFactoryNos = Array.from(
+      new Set(factoryNos.map(item => normalizeFactoryNoOrNull(item)).filter(Boolean)),
+    ) as string[];
     return withDetailCache(
-      `factoryPriceComparison:${country}:${factoryNos.join(',')}:${productName}:${category}:${offerType}:${days}`,
+      `factoryPriceComparison:${country}:${normalizedFactoryNos.join(',')}:${productName}:${category}:${offerType}:${days}`,
       () => unwrap<FactoryPriceComparison>(
         apiClient.get('api/v1/price-trend/compare', {
-          params: {country, factoryNos: factoryNos.join(','), productName, category, offerType, days},
+          params: {country, factoryNos: normalizedFactoryNos.join(','), productName, category, offerType, days},
         }),
       ),
     );

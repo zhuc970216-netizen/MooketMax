@@ -38,6 +38,24 @@ export type HomeStatData = {
   statTime: string;
 };
 
+export type HomeHotSkuTrendPoint = {
+  date?: string | null;
+  avgPrice?: number | null;
+  offerCount?: number | null;
+};
+
+export type HomeHotSku = {
+  country?: string | null;
+  factoryNo?: string | null;
+  productId?: number | null;
+  productName?: string | null;
+  priceMin?: number | null;
+  priceMax?: number | null;
+  offerCount?: number | null;
+  merchantCount?: number | null;
+  trendPoints?: HomeHotSkuTrendPoint[] | null;
+};
+
 export type SearchHistory = {
   historyId: number;
   searchWord: string;
@@ -58,7 +76,9 @@ export type HomeCardItem = {
   exampleEntityKey?: string | null;
   rank?: number | null;
   todayOfferCount?: number | null;
+  searchWord?: string | null;
   historyId?: number | null;
+  createTime?: string | null;
   productId?: number | null;
   productName?: string | null;
   merchantCount?: number | null;
@@ -144,6 +164,59 @@ export type AppVersionInfo = {
   hasUpdate: boolean;
   updateUrl?: string | null;
   updateContent?: string | null;
+};
+
+export type OfferFeedItem = {
+  offerId?: number | null;
+  merchantId?: number | string | null;
+  merchantName?: string | null;
+  merchantShortName?: string | null;
+  brandName?: string | null;
+  merchantTags?: string | null;
+  contactPhone?: string | null;
+  userNickname?: string | null;
+  category?: string | null;
+  productId?: number | null;
+  productName?: string | null;
+  country?: string | null;
+  factoryNo?: string | null;
+  price?: number | null;
+  priceMax?: number | null;
+  weight?: string | null;
+  offerType?: string | null;
+  goodsType?: string | null;
+  goodsLocation?: string | null;
+  region?: string | null;
+  tags?: string | null;
+  fatRatio?: string | null;
+  feedingType?: string | null;
+  cattleBreed?: string | null;
+  remark?: string | null;
+  offerOriginalText?: string | null;
+  originalText?: string | null;
+  originalContent?: string | null;
+  sourceText?: string | null;
+  rawText?: string | null;
+  publishTime?: string | null;
+};
+
+export type OfferFeedFilterOptions = {
+  countries?: string[] | null;
+  factoryNos?: string[] | null;
+  regions?: string[] | null;
+  goodsTypes?: string[] | null;
+  feedingTypes?: string[] | null;
+  tags?: string[] | null;
+};
+
+export type OfferFeedPage = {
+  items: OfferFeedItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  offerType: 'offer' | 'inquiry';
+  filterOptions?: OfferFeedFilterOptions | null;
 };
 
 export type EmployeeOffer = {
@@ -517,8 +590,10 @@ export type BrandProductDetailResult = {
   priceMax?: number | null;
   todayOfferCount: number;
   yesterdayOfferCount: number;
+  totalOfferCount?: number | null;
   todayInquiryCount: number;
   yesterdayInquiryCount: number;
+  totalInquiryCount?: number | null;
   summaries: BrandProductSummary[];
   totalCount: number;
   page?: number | null;

@@ -23,6 +23,14 @@ export function OriginalTextSheet({
   const scrollRef = useRef<ScrollView | null>(null);
   const [segmentLayouts, setSegmentLayouts] = useState<Record<number, number>>({});
   const analysis = useMemo(() => analyzeOriginalText(text, keywords), [keywords, text]);
+  const activeSegmentIndexes = useMemo(() => {
+    const indexes = analysis.bestSegmentIndexes?.length
+      ? analysis.bestSegmentIndexes
+      : analysis.bestSegmentIndex >= 0
+        ? [analysis.bestSegmentIndex]
+        : [];
+    return new Set(indexes);
+  }, [analysis.bestSegmentIndex, analysis.bestSegmentIndexes]);
 
   useEffect(() => {
     if (!visible) {
@@ -31,22 +39,29 @@ export function OriginalTextSheet({
   }, [visible]);
 
   useEffect(() => {
+    setSegmentLayouts({});
+  }, [keywords, text]);
+
+  useEffect(() => {
     if (!visible || analysis.bestSegmentIndex < 0) return;
     const y = segmentLayouts[analysis.bestSegmentIndex];
     if (typeof y === 'number') {
-      scrollRef.current?.scrollTo({y: Math.max(0, y - 12), animated: true});
+      const scrollToMatch = () => scrollRef.current?.scrollTo({y: Math.max(0, y - 12), animated: false});
+      requestAnimationFrame(scrollToMatch);
+      const timer = setTimeout(scrollToMatch, 80);
+      return () => clearTimeout(timer);
     }
   }, [analysis.bestSegmentIndex, segmentLayouts, visible]);
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
       <View style={styles.overlay}>
         <Pressable style={styles.backdrop} onPress={onClose} />
         <View style={[styles.sheet, {paddingBottom: Math.max(insets.bottom, 24)}]}>
           <View style={styles.handle} />
           <View style={styles.titleRow}>
             <Text style={styles.title}>{title}</Text>
-            <Pressable hitSlop={8} onPress={onClose}>
+            <Pressable hitSlop={12} onPress={onClose} style={styles.closeButton}>
               <Text style={styles.close}>关闭</Text>
             </Pressable>
           </View>
@@ -59,17 +74,22 @@ export function OriginalTextSheet({
             keyboardShouldPersistTaps="handled">
             {text ? (
               analysis.segments.length > 0 ? (
-                analysis.segments.map((segment, index) => (
-                  <Text
-                    key={`${index}-${segment.slice(0, 12)}`}
-                    style={styles.text}
-                    onLayout={(event: LayoutChangeEvent) => {
-                      const y = event.nativeEvent.layout.y;
-                      setSegmentLayouts(prev => (prev[index] === y ? prev : {...prev, [index]: y}));
-                    }}>
-                    {renderTextWithPhones(segment)}
-                  </Text>
-                ))
+                analysis.segments.map((segment, index) => {
+                  const active = activeSegmentIndexes.has(index);
+                  return (
+                    <View
+                      key={`${index}-${segment.slice(0, 12)}`}
+                      style={styles.segmentBlock}
+                      onLayout={(event: LayoutChangeEvent) => {
+                        const y = event.nativeEvent.layout.y;
+                        setSegmentLayouts(prev => (prev[index] === y ? prev : {...prev, [index]: y}));
+                      }}>
+                      <Text style={[styles.text, active && styles.textActive]}>
+                        {renderTextWithPhones(segment)}
+                      </Text>
+                    </View>
+                  );
+                })
               ) : (
                 <Text style={styles.text}>{renderTextWithPhones(text)}</Text>
               )
@@ -145,6 +165,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  closeButton: {
+    minWidth: 56,
+    height: 36,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+  },
   scroll: {
     flexGrow: 0,
   },
@@ -152,11 +178,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 24,
   },
+  segmentBlock: {
+    marginBottom: 6,
+  },
   text: {
     color: '#3C4947',
     fontSize: 14,
     lineHeight: 22,
-    marginBottom: 6,
+  },
+  textActive: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#CFEFE7',
+    borderRadius: 2,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
   },
   phoneText: {
     color: colors.primary,

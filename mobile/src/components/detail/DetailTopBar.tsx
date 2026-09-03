@@ -16,6 +16,7 @@ type Props = {
   tags: Tag[];
   onSearchPress?: () => void;
   rightAction?: React.ReactNode;
+  topSlot?: React.ReactNode;
 };
 
 /**
@@ -28,6 +29,7 @@ export function DetailTopBar({
   tags,
   onSearchPress,
   rightAction,
+  topSlot,
 }: Props) {
   const insets = useSafeAreaInsets();
 
@@ -35,39 +37,53 @@ export function DetailTopBar({
     <View
       style={[
         styles.bar,
-        { paddingTop: insets.top + 12, minHeight: insets.top + 48 },
+        { paddingTop: insets.top + 12, minHeight: insets.top + (topSlot ? 88 : 48) },
       ]}
     >
-      <Pressable onPress={onBack} hitSlop={8} style={styles.backButton}>
-        <SvgXml xml={backArrowXml} width={24} height={24} />
-      </Pressable>
-      <Pressable onPress={onSearchPress} style={styles.searchBox}>
-        <View style={styles.tagsRow}>
-          {tags.map((tag, index) => (
-            <SearchTag
-              key={`${tag.text}-${index}`}
-              text={tag.text}
-              onPress={tag.onClose}
-            />
-          ))}
+      {topSlot ? (
+        <View style={styles.topRow}>
+          <Pressable onPress={onBack} hitSlop={8} style={styles.backButton}>
+            <SvgXml xml={backArrowXml} width={24} height={24} />
+          </Pressable>
+          <View style={styles.topSlot}>{topSlot}</View>
+          <View style={styles.topSpacer} />
         </View>
-        <View style={styles.searchIcon}>
-          <SvgXml xml={searchIconXml} width={16} height={16} />
-        </View>
-      </Pressable>
-      {rightAction ? (
-        <View style={styles.rightAction}>{rightAction}</View>
       ) : null}
+      <View style={styles.searchRow}>
+        {!topSlot ? (
+          <Pressable onPress={onBack} hitSlop={8} style={styles.backButton}>
+            <SvgXml xml={backArrowXml} width={24} height={24} />
+          </Pressable>
+        ) : null}
+        <Pressable onPress={onSearchPress} style={styles.searchBox}>
+          <View style={styles.tagsRow}>
+            {tags.map((tag, index) => (
+              <SearchTag
+                key={`${tag.text}-${index}`}
+                text={tag.text}
+                onPress={tag.onPress}
+                onClose={tag.onClose}
+              />
+            ))}
+          </View>
+          <View style={styles.searchIcon}>
+            <SvgXml xml={searchIconXml} width={16} height={16} />
+          </View>
+        </Pressable>
+        {rightAction ? (
+          <View style={styles.rightAction}>{rightAction}</View>
+        ) : null}
+      </View>
     </View>
   );
 }
 
-function SearchTag({ text, onPress }: { text: string; onPress: () => void }) {
+function SearchTag({ text, onPress, onClose }: { text: string; onPress?: () => void; onClose: () => void }) {
   return (
     <Pressable
       onPress={event => {
         event.stopPropagation();
-        onPress();
+        onPress?.();
       }}
       style={styles.tag}
     >
@@ -78,7 +94,7 @@ function SearchTag({ text, onPress }: { text: string; onPress: () => void }) {
         hitSlop={8}
         onPress={event => {
           event.stopPropagation();
-          onPress();
+          onClose();
         }}
         style={styles.tagClose}
       >
@@ -93,6 +109,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 16,
     paddingBottom: 12,
+  },
+  topRow: {
+    height: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  topSlot: {
+    flex: 1,
+  },
+  topSpacer: {
+    width: 24,
+  },
+  searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,

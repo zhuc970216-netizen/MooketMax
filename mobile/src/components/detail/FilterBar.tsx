@@ -1,9 +1,13 @@
-import React from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import React, {useCallback, useRef} from 'react';
+import {Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
-import {colors} from '../../theme/colors';
+
+const FILTER_ACCENT = '#02BDAB';
 
 export type FilterKey =
+  | 'sort'
+  | 'category'
+  | 'followedMerchant'
   | 'famousMerchant'
   | 'merchant'
   | 'countryFactory'
@@ -19,17 +23,57 @@ export type FilterDef = {
   label: string;
   hasSelection: boolean;
   toggle?: boolean;
+  onClear?: () => void;
 };
 
 type Props = {
   filters: FilterDef[];
   active: FilterKey | null;
   onPress: (key: FilterKey) => void;
+  onBottomLayout?: (bottom: number) => void;
 };
 
-export function FilterBar({filters, active, onPress}: Props) {
+export function FilterBar({filters, active, onPress, onBottomLayout}: Props) {
+  const wrapRef = useRef<View>(null);
+  const heightRef = useRef(0);
+
+  const measureBottom = useCallback((afterMeasure?: () => void) => {
+    if (!onBottomLayout) {
+      afterMeasure?.();
+      return;
+    }
+    requestAnimationFrame(() => {
+      if (!wrapRef.current) {
+        afterMeasure?.();
+        return;
+      }
+      wrapRef.current.measureInWindow((_x, y, _width, height) => {
+        if (Number.isFinite(y) && Number.isFinite(height)) {
+          const measuredHeight = height > 0 ? height : heightRef.current;
+          onBottomLayout(y + measuredHeight);
+        }
+        afterMeasure?.();
+      });
+    });
+  }, [onBottomLayout]);
+
+  const handleLayout = useCallback(
+    (event: LayoutChangeEvent) => {
+      heightRef.current = event.nativeEvent.layout.height;
+      measureBottom();
+    },
+    [measureBottom],
+  );
+
+  const handlePress = useCallback(
+    (key: FilterKey) => {
+      measureBottom(() => onPress(key));
+    },
+    [measureBottom, onPress],
+  );
+
   return (
-    <View style={styles.wrap}>
+    <View ref={wrapRef} collapsable={false} onLayout={handleLayout} style={styles.wrap}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {filters.map(item => (
           <FilterChip
@@ -39,7 +83,8 @@ export function FilterBar({filters, active, onPress}: Props) {
             active={active === item.key}
             toggle={item.toggle}
             famous={item.key === 'famousMerchant'}
-            onPress={() => onPress(item.key)}
+            onPress={() => handlePress(item.key)}
+            onClear={item.onClear}
           />
         ))}
       </ScrollView>
@@ -54,6 +99,7 @@ function FilterChip({
   toggle,
   famous,
   onPress,
+  onClear,
 }: {
   label: string;
   selected: boolean;
@@ -61,6 +107,7 @@ function FilterChip({
   toggle?: boolean;
   famous?: boolean;
   onPress: () => void;
+  onClear?: () => void;
 }) {
   if (famous) {
     return (
@@ -79,8 +126,43 @@ function FilterChip({
     );
   }
 
-  const borderColor = selected ? colors.primary : 'transparent';
-  const textColor = selected ? colors.primary : '#3C4947';
+  const borderColor = 'transparent';
+  const textColor = selected ? FILTER_ACCENT : '#3C4947';
+  const showClear = selected && Boolean(onClear);
+
+  if (showClear) {
+    return (
+      <View style={[styles.chip, styles.clearableChip, {borderColor}, active && styles.chipPressed]}>
+        <Pressable onPress={onPress} style={styles.chipMain} hitSlop={{top: 6, bottom: 6, left: 4, right: 4}}>
+          <Text style={[styles.chipText, {color: textColor}]} numberOfLines={1}>
+            {label}
+          </Text>
+          {!toggle ? (
+            <Svg width={10} height={10} viewBox="0 0 10 10">
+              <Path
+                d={active ? 'M2.5 6L5 3.5L7.5 6' : 'M2.5 4L5 6.5L7.5 4'}
+                stroke={FILTER_ACCENT}
+                strokeWidth={1.2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+            </Svg>
+          ) : null}
+        </Pressable>
+        <View style={styles.clearDivider} />
+        <Pressable
+          onPress={event => {
+            event.stopPropagation();
+            onClear?.();
+          }}
+          hitSlop={6}
+          style={styles.clearButton}>
+          <Text style={styles.clearText}>×</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   return (
     <Pressable onPress={onPress} style={[styles.chip, {borderColor}, active && styles.chipPressed]}>
@@ -90,8 +172,8 @@ function FilterChip({
       {!toggle ? (
         <Svg width={10} height={10} viewBox="0 0 10 10">
           <Path
-            d="M2.5 4L5 6.5L7.5 4"
-            stroke={selected ? colors.primary : '#3C4947'}
+            d={active ? 'M2.5 6L5 3.5L7.5 6' : 'M2.5 4L5 6.5L7.5 4'}
+            stroke={active || selected ? FILTER_ACCENT : '#3C4947'}
             strokeWidth={1.2}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -120,7 +202,7 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: 2,
     borderWidth: 1,
-    backgroundColor: '#F3F6F5',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -131,6 +213,34 @@ const styles = StyleSheet.create({
   },
   chipPressed: {
     opacity: 0.7,
+  },
+  clearableChip: {
+    paddingRight: 5,
+  },
+  chipMain: {
+    minHeight: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+  },
+  clearDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 14,
+    backgroundColor: 'rgba(2,189,171,0.28)',
+    marginHorizontal: 2,
+  },
+  clearButton: {
+    width: 14,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearText: {
+    color: FILTER_ACCENT,
+    fontSize: 14,
+    lineHeight: 16,
+    fontWeight: '500',
   },
   chipText: {
     fontSize: 12,

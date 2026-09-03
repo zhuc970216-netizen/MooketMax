@@ -55,6 +55,17 @@ public class HomeController {
     }
 
     /**
+     * 获取首页找货热门 SKU（按后端全量有效报盘统计）
+     */
+    @GetMapping("/hot-offer-skus")
+    public ApiResponse<List<com.mooket.social.dto.HomeHotSkuDTO>> getHomeHotOfferSkus(
+            @RequestParam(required = false, defaultValue = "牛") String category,
+            @RequestParam(required = false, defaultValue = "3") Integer limit) {
+        List<com.mooket.social.dto.HomeHotSkuDTO> skus = homeStatService.getHomeHotOfferSkus(category, limit);
+        return ApiResponse.success(skus);
+    }
+
+    /**
      * 获取首页卡片数据（瀑布流8种卡片）
      * @param tab 0=热门统计卡片 1=历史搜索卡片
      */

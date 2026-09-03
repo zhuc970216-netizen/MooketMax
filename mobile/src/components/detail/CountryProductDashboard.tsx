@@ -5,6 +5,7 @@ import {colors} from '../../theme/colors';
 import {fonts} from '../../theme/typography';
 import {buildTrendChartPoints, MiniTrendChart} from '../home/MiniTrendChart';
 import type {DailyPrice} from '../../types/api';
+import {FeedStatLink} from './FeedStatLink';
 
 type Props = {
   country: string;
@@ -20,6 +21,8 @@ type Props = {
   history7Days?: DailyPrice[] | null;
   history30Days?: DailyPrice[] | null;
   hideProductTitle?: boolean;
+  onOfferPress?: () => void;
+  onInquiryPress?: () => void;
 };
 
 export function CountryProductDashboard({
@@ -36,10 +39,13 @@ export function CountryProductDashboard({
   history7Days,
   history30Days,
   hideProductTitle = false,
+  onOfferPress,
+  onInquiryPress,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const priceText = formatPrice(priceMin, priceMax);
+  const isMissingPrice = !priceText.unit;
   const trend7 = (history7Days ?? [])
     .map(d => Number(d.avgPrice))
     .filter(v => Number.isFinite(v) && v > 0) as number[];
@@ -72,7 +78,10 @@ export function CountryProductDashboard({
             近2日{isInquiry ? '求购' : '报盘'}价格区间（RMB）
           </Text>
           <View style={styles.priceLine}>
-            <Text style={styles.priceValue} numberOfLines={1} adjustsFontSizeToFit>
+            <Text
+              style={[styles.priceValue, isMissingPrice && styles.priceMuted]}
+              numberOfLines={1}
+              adjustsFontSizeToFit>
               {priceText.value}
             </Text>
             {priceText.unit ? <Text style={styles.priceUnit}>{priceText.unit}</Text> : null}
@@ -92,8 +101,8 @@ export function CountryProductDashboard({
 
       <View style={styles.statsFooter}>
         <View style={styles.statsRow}>
-          <Stat label="报盘数" value={offerCount ?? '--'} />
-          <Stat label="求购数" value={inquiryCount ?? '--'} />
+          <FeedStatLink label="报盘数" value={offerCount ?? '--'} onPress={onOfferPress} />
+          <FeedStatLink label="求购数" value={inquiryCount ?? '--'} onPress={onInquiryPress} />
           <Stat label="商家数" value={merchantCount ?? '--'} />
         </View>
         <Pressable onPress={() => setExpanded(prev => !prev)} style={styles.expandButton}>
@@ -127,8 +136,12 @@ function ExpandedChart({history}: {history: DailyPrice[]}) {
       .filter(d => Number.isFinite(d.price) && d.price > 0);
   }, [history]);
 
-  const data = filtered.map(d => d.price);
-  const dates = filtered.map(d => d.date);
+  const data = useMemo(() => filtered.map(d => d.price), [filtered]);
+  const dates = useMemo(() => filtered.map(d => d.date), [filtered]);
+  const chartPoints = useMemo(
+    () => buildTrendChartPoints(data, chartWidth, chartHeight),
+    [data, chartHeight, chartWidth],
+  );
 
   if (data.length < 2) {
     return <Text style={styles.empty}>暂无30日趋势数据</Text>;
@@ -140,10 +153,6 @@ function ExpandedChart({history}: {history: DailyPrice[]}) {
       ? [0, Math.floor(length / 4), Math.floor(length / 2), Math.floor((length * 3) / 4), length - 1]
       : data.map((_, i) => i);
   const labels = indices.map(i => formatShort(dates[i]));
-  const chartPoints = useMemo(
-    () => buildTrendChartPoints(data, chartWidth, chartHeight),
-    [data, chartHeight, chartWidth],
-  );
   const selectedPoint = selectedIdx != null ? chartPoints[selectedIdx] : null;
 
   function handlePress(event: {nativeEvent: {locationX: number}}) {
@@ -308,6 +317,10 @@ const styles = StyleSheet.create({
     fontSize: 24,
     lineHeight: 32,
     flexShrink: 1,
+  },
+  priceMuted: {
+    color: colors.primary,
+    fontSize: 16,
   },
   priceUnit: {
     fontFamily: fonts.manropeRegular,

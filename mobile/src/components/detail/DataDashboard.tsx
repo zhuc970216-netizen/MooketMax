@@ -2,10 +2,12 @@ import React from 'react';
 import {StyleSheet, Text, View} from 'react-native';
 import {colors} from '../../theme/colors';
 import {fonts} from '../../theme/typography';
+import {FeedStatLink} from './FeedStatLink';
 
 type Stat = {
   label: string;
   value: string | number | null | undefined;
+  onPress?: () => void;
 };
 
 type Props = {
@@ -13,7 +15,7 @@ type Props = {
   /** 顶部主标题（产品名/国家+厂号等） */
   title?: string;
   /** 左侧主指标（大数字，如近 2 日报盘） */
-  mainStat?: {label: string; value: string | number | null | undefined};
+  mainStat?: {label: string; value: string | number | null | undefined; onPress?: () => void};
   /** 右上角价格区间 */
   priceRange?: {min?: number | null; max?: number | null};
 };
@@ -32,10 +34,13 @@ export function DataDashboard({stats, title, mainStat, priceRange}: Props) {
     return (
       <View style={styles.simpleBar}>
         {stats.map(item => (
-          <View key={item.label} style={styles.simpleItem}>
-            <Text style={styles.simpleLabel}>{item.label}</Text>
-            <Text style={styles.simpleValue}>{formatStat(item.value)}</Text>
-          </View>
+          <FeedStatLink
+            key={item.label}
+            label={item.label}
+            value={formatStat(item.value)}
+            onPress={item.onPress}
+            style={styles.simpleItem}
+          />
         ))}
       </View>
     );
@@ -55,16 +60,13 @@ export function DataDashboard({stats, title, mainStat, priceRange}: Props) {
             </View>
           ) : null}
           {mainStat ? (
-            <View style={styles.mainStatBlock}>
-              <Text style={styles.smallLabel}>{mainStat.label}</Text>
-              <Text
-                style={styles.mainStatValue}
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                allowFontScaling={false}>
-                {formatStat(mainStat.value)}
-              </Text>
-            </View>
+            <FeedStatLink
+              label={mainStat.label}
+              value={formatStat(mainStat.value)}
+              layout="large"
+              onPress={mainStat.onPress}
+              style={styles.mainStatBlock}
+            />
           ) : null}
         </View>
 
@@ -86,12 +88,14 @@ export function DataDashboard({stats, title, mainStat, priceRange}: Props) {
           {stats.length > 0 ? (
             <View style={styles.smallStatsRow}>
               {stats.map(item => (
-                <View key={item.label} style={styles.smallStat}>
-                  <Text style={styles.smallLabel}>{item.label}</Text>
-                  <Text style={styles.smallValue} numberOfLines={1} adjustsFontSizeToFit>
-                    {formatStat(item.value)}
-                  </Text>
-                </View>
+                <FeedStatLink
+                  key={item.label}
+                  label={item.label}
+                  value={formatStat(item.value)}
+                  onPress={item.onPress}
+                  layout="stacked"
+                  style={styles.smallStat}
+                />
               ))}
             </View>
           ) : null}
@@ -192,7 +196,8 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   priceMuted: {
-    color: '#9DA4A3',
+    color: colors.primary,
+    fontSize: 14,
   },
   priceUnit: {
     fontFamily: fonts.manropeRegular,

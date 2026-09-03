@@ -8,7 +8,6 @@ import com.mooket.social.dto.GroupedOfferFilterOptionsDTO;
 import com.mooket.social.entity.BizOffer;
 import com.mooket.social.entity.DictMerchant;
 import com.mooket.social.entity.DictProduct;
-import com.mooket.social.entity.FactoryTier;
 import com.mooket.social.mapper.BizOfferMapper;
 import com.mooket.social.mapper.DictMerchantMapper;
 import com.mooket.social.mapper.DictProductMapper;
@@ -87,10 +86,17 @@ private final BizOfferMapper offerMapper;
 
         // 查询是否有平替产品
         // 判断标准：factory_tier 表中同一 category + product_name 下有多个不同 tier 的厂号
-        String tier = factoryTierMapper.selectTierByFactoryNo(category, productName, factoryNo);
+        List<String> tierLookupProductNames = resolveTierLookupProductNames(category, productName, product);
+        String tier = tierLookupProductNames.isEmpty()
+                ? null
+                : factoryTierMapper.selectTierByFactoryNoAndProductNames(category, tierLookupProductNames, factoryNo);
         boolean hasSubstitute = false;
         if (tier != null && !tier.isEmpty()) {
-            List<String> sameTierFactories = factoryTierMapper.selectFactoryNosByTier(category, productName, tier);
+            List<String> sameTierFactories = factoryTierMapper.selectFactoryNosByTierAndProductNames(
+                    category,
+                    tierLookupProductNames,
+                    tier
+            );
             if (sameTierFactories != null && sameTierFactories.size() > 1) {
                 hasSubstitute = true;
             }
@@ -224,6 +230,48 @@ private final BizOfferMapper offerMapper;
             return "comprehensive";
         }
         return sortBy;
+    }
+
+    private List<String> resolveTierLookupProductNames(String category, String productName, DictProduct product) {
+        LinkedHashSet<String> productNames = new LinkedHashSet<>();
+        addTierLookupProductName(productNames, productName);
+
+        DictProduct resolvedProduct = product;
+        if (resolvedProduct == null && productName != null && !productName.isBlank()) {
+            resolvedProduct = productMapper.findByName(category, productName);
+            if (resolvedProduct == null) {
+                resolvedProduct = productMapper.selectByProductName(productName);
+            }
+        }
+
+        if (resolvedProduct != null) {
+            addTierLookupProductName(productNames, resolvedProduct.getProductName());
+            for (String alias : splitAliasValues(resolvedProduct.getAliasList())) {
+                addTierLookupProductName(productNames, alias);
+            }
+        }
+
+        return new ArrayList<>(productNames);
+    }
+
+    private void addTierLookupProductName(Set<String> productNames, String value) {
+        if (value == null) {
+            return;
+        }
+        String trimmed = value.trim();
+        if (!trimmed.isEmpty()) {
+            productNames.add(trimmed);
+        }
+    }
+
+    private List<String> splitAliasValues(String aliasList) {
+        if (aliasList == null || aliasList.isBlank()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(aliasList.split("[,\uFF0C\u3001]"))
+                .map(String::trim)
+                .filter(alias -> !alias.isEmpty())
+                .toList();
     }
 
     private GroupedOfferFilterOptionsDTO buildFilterOptions(List<BizOffer> offers, Map<Long, DictMerchant> merchantMap) {

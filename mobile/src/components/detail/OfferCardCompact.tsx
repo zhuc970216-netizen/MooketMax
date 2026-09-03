@@ -1,12 +1,20 @@
-import React, {memo} from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import React, {memo, useEffect, useState} from 'react';
+import {Alert, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {SvgXml} from 'react-native-svg';
 import Svg, {Path} from 'react-native-svg';
 import {colors} from '../../theme/colors';
 import {fonts} from '../../theme/typography';
 import type {EmployeeOffer, OfferSummary} from '../../types/api';
 import {buildOriginalTextPayload, type OriginalTextPayload} from '../../utils/originalText';
-import {colorForOfferField, colorForTag, computePriceRange, extractCity, formatPublishTime, parseWeight, splitTags} from '../../utils/offer';
+import {colorForOfferField, colorForTag, computePriceRange, formatGoodsLocation, formatPublishTime, parseWeight, splitTags} from '../../utils/offer';
+import {
+  addIntentPlate,
+  createPlateSnapshotFromEmployee,
+  getIntentPlateKeys,
+  recordRecentContactPlate,
+  removeIntentPlate,
+  type PlateKind,
+} from '../../utils/plateFollowStore';
 import {OfferTagChip} from './OfferTagChip';
 
 type Props = {
@@ -14,6 +22,9 @@ type Props = {
   expanded: boolean;
   onToggle: () => void;
   merchantPhone?: string | null;
+  plateType?: PlateKind;
+  merchantId?: number | string | null;
+  merchantName?: string | null;
   onCopyPhone?: () => void;
   onDial?: () => void;
   onViewOriginalText?: (payload: OriginalTextPayload) => void;
@@ -29,19 +40,23 @@ function OfferCardCompactInner({
   expanded,
   onToggle,
   merchantPhone,
+  plateType = 'offer',
+  merchantId,
+  merchantName,
   onCopyPhone,
   onDial,
   onViewOriginalText,
 }: Props) {
   const employeePrices = offer.employeeOffers?.map(item => item.price);
   const [priceText, priceUnit] = computePriceRange(employeePrices, offer.price, offer.priceMax);
+  const isNegotiatedPrice = Boolean(priceText?.includes('协商'));
   const titleText = offer.factoryNo
     ? `${offer.productName ?? ''} ${offer.country ?? ''}${offer.factoryNo}`
     : `${offer.productName ?? ''} ${offer.country ?? ''}厂号不限`;
 
   const allLocations = unique([
-    extractCity(offer.goodsLocation),
-    ...(offer.employeeOffers ?? []).map(item => extractCity(item.goodsLocation)),
+    formatGoodsLocation(offer.goodsLocation),
+    ...(offer.employeeOffers ?? []).map(item => formatGoodsLocation(item.goodsLocation)),
   ]);
   const allGoodsTypes = unique([
     offer.goodsType ?? '',
@@ -76,7 +91,9 @@ function OfferCardCompactInner({
             </Text>
             {priceText ? (
               <View style={styles.priceLine}>
-                <Text style={styles.priceValue}>{priceText}</Text>
+                <Text style={[styles.priceValue, isNegotiatedPrice && styles.negotiateValue]}>
+                  {priceText}
+                </Text>
                 {priceUnit ? <Text style={styles.priceUnit}>{priceUnit}</Text> : null}
               </View>
             ) : null}
@@ -118,6 +135,12 @@ function OfferCardCompactInner({
               key={`${item.offerId ?? `${item.userNickname}-${index}`}`}
               offer={item}
               merchantPhone={merchantPhone ?? null}
+              country={offer.country}
+              factoryNo={offer.factoryNo}
+              productName={offer.productName}
+              plateType={plateType}
+              merchantId={merchantId}
+              merchantName={merchantName}
               onCopyPhone={onCopyPhone}
               onDial={onDial}
               onViewOriginalText={onViewOriginalText}
@@ -133,12 +156,24 @@ export const OfferCardCompact = memo(OfferCardCompactInner);
 function EmployeeRow({
   offer,
   merchantPhone,
+  country,
+  factoryNo,
+  productName,
+  plateType,
+  merchantId,
+  merchantName,
   onCopyPhone,
   onDial,
   onViewOriginalText,
 }: {
   offer: EmployeeOffer;
   merchantPhone?: string | null;
+  country?: string | null;
+  factoryNo?: string | null;
+  productName?: string | null;
+  plateType: PlateKind;
+  merchantId?: number | string | null;
+  merchantName?: string | null;
   onCopyPhone?: () => void;
   onDial?: () => void;
   onViewOriginalText?: (payload: OriginalTextPayload) => void;
@@ -150,6 +185,57 @@ function EmployeeRow({
   const fatRatio = offer.fatRatio?.trim() ?? '';
   const cattleBreed = offer.cattleBreed?.trim() ?? '';
   const remark = offer.remark?.trim() ?? '';
+  const snapshot = createPlateSnapshotFromEmployee(offer, plateType, {
+    country,
+    factoryNo,
+    productName,
+    merchantName,
+    merchantId,
+    contactPhone: merchantPhone,
+  });
+  const [intentAdded, setIntentAdded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    getIntentPlateKeys()
+      .then(keys => {
+        if (!cancelled) setIntentAdded(keys.has(snapshot.key));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot.key]);
+
+  async function handleToggleIntent() {
+    if (intentAdded) {
+      try {
+        await removeIntentPlate(snapshot.key);
+        setIntentAdded(false);
+      } catch {
+        // Cancelling should stay quiet; the next focus/load will resync local state.
+      }
+      return;
+    }
+
+    try {
+      const result = await addIntentPlate(snapshot);
+      setIntentAdded(true);
+      Alert.alert(result.alreadyAdded ? '已在意向盘' : '已加入意向盘', result.alreadyAdded ? '这条盘已在意向盘中。' : '后续可以在首页“我的跟进”里找回。');
+    } catch (error) {
+      Alert.alert('加入失败', error instanceof Error ? error.message : '请稍后重试');
+    }
+  }
+
+  function handleCopyPhone() {
+    recordRecentContactPlate(snapshot, 'wechat').catch(() => undefined);
+    onCopyPhone?.();
+  }
+
+  function handleDial() {
+    recordRecentContactPlate(snapshot, 'phone').catch(() => undefined);
+    onDial?.();
+  }
 
   return (
     <View style={empStyles.wrap}>
@@ -183,7 +269,7 @@ function EmployeeRow({
         <View style={empStyles.tagRow}>
           {time ? <Text style={empStyles.time}>{time}</Text> : null}
           {offer.goodsLocation ? (
-            <OfferTagChip text={extractCity(offer.goodsLocation)} variant="location" />
+            <OfferTagChip text={formatGoodsLocation(offer.goodsLocation)} variant="location" />
           ) : null}
           {offer.goodsType ? <OfferTagChip text={offer.goodsType} variant="colored" {...colorForOfferField('goodsType')} /> : null}
           {feedingType ? <OfferTagChip text={feedingType} variant="colored" {...colorForOfferField('feedingType')} /> : null}
@@ -200,10 +286,15 @@ function EmployeeRow({
         <View style={empStyles.actions}>
           <ActionButton
             text="查看原文"
+            icon={<BookIcon />}
             onPress={() =>
               onViewOriginalText?.(
                 buildOriginalTextPayload({
-                  text: offer.offerOriginalText,
+                  text: resolveOriginalText(offer),
+                  intent: plateType,
+                  country,
+                  factoryNo,
+                  productName,
                   price: offer.price,
                   priceMax: offer.priceMax,
                   goodsLocation: offer.goodsLocation,
@@ -220,18 +311,50 @@ function EmployeeRow({
             }
           />
           <View style={empStyles.actionVDivider} />
-          <ActionButton text="添加微信" onPress={onCopyPhone} />
+          <ActionButton
+            text={intentAdded ? '已加意向' : '加意向'}
+            icon={<IntentActionIcon selected={intentAdded} />}
+            onPress={handleToggleIntent}
+            primary={intentAdded}
+          />
           <View style={empStyles.actionVDivider} />
-          <ActionButton text="拨打电话" onPress={onDial} primary />
+          <ActionButton text="添加微信" icon={<AddSquareIcon />} onPress={handleCopyPhone} />
+          <View style={empStyles.actionVDivider} />
+          <ActionButton text="拨打电话" icon={<PhoneIcon />} onPress={handleDial} primary />
         </View>
       </View>
     </View>
   );
 }
 
-function ActionButton({text, primary, onPress}: {text: string; primary?: boolean; onPress?: () => void}) {
+function resolveOriginalText(offer: EmployeeOffer): string {
+  const candidates = [
+    offer.offerOriginalText,
+    offer.originalText,
+    offer.originalContent,
+    offer.sourceText,
+    offer.rawText,
+  ];
+
+  return candidates.find(value => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
+}
+
+function ActionButton({
+  disabled = false,
+  icon,
+  text,
+  primary,
+  onPress,
+}: {
+  disabled?: boolean;
+  icon?: React.ReactNode;
+  text: string;
+  primary?: boolean;
+  onPress?: () => void;
+}) {
   return (
-    <Pressable onPress={onPress} style={empStyles.actionButton}>
+    <Pressable disabled={disabled} onPress={onPress} style={empStyles.actionButton}>
+      {icon}
       <Text style={[empStyles.actionText, primary && empStyles.actionTextPrimary]}>{text}</Text>
     </Pressable>
   );
@@ -257,6 +380,58 @@ function UserSquareIcon() {
       <Path d="M12.75 16.5H5.25C2.25 16.5 1.5 15.75 1.5 12.75V5.25C1.5 2.25 2.25 1.5 5.25 1.5H12.75C15.75 1.5 16.5 2.25 16.5 5.25V12.75C16.5 15.75 15.75 16.5 12.75 16.5Z" fill="#D2E8E5" stroke="#5098AA" strokeWidth={0.8} strokeLinecap="round" strokeLinejoin="round"/>
       <Path d="M12.75 14.25C12.75 12.5932 11.0711 11.25 9 11.25C6.92893 11.25 5.25 12.5932 5.25 14.25" stroke="#244C56" strokeWidth={0.8} strokeLinecap="round" strokeLinejoin="round"/>
       <Path d="M9 11.25C10.2426 11.25 11.25 10.2426 11.25 9C11.25 7.75736 10.2426 6.75 9 6.75C7.75736 6.75 6.75 7.75736 6.75 9C6.75 10.2426 7.75736 11.25 9 11.25Z" fill="#D2E8E5" stroke="#244C56" strokeWidth={0.8} strokeLinecap="round" strokeLinejoin="round"/>
+    </Svg>
+  );
+}
+
+function BookIcon() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M22 16.7V4.7c0-1.2-1-2.1-2.2-2C16.3 3 11.1 3.9 7.7 6c-.4.2-.7.7-.7 1.2v15.6c0 .8.8 1.4 1.6 1.2 3.5-2 8.5-2.8 11.7-3.1 1-.1 1.7-1 1.7-2v-2.2"
+        stroke="#3C4947"
+        strokeWidth={1.5}
+      />
+      <Path d="M2 18.5V5C2 3.4 3.3 2.7 4.8 3.4 6.5 4.2 9.7 5.5 11.5 6.4" stroke="#3C4947" strokeWidth={1.5} />
+    </Svg>
+  );
+}
+
+function AddSquareIcon() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path d="M9 22h6c5 0 7-2 7-7V9c0-5-2-7-7-7H9C4 2 2 4 2 9v6c0 5 2 7 7 7Z" stroke="#3C4947" strokeWidth={1.5} />
+      <Path d="M8 12h8M12 16V8" stroke="#3C4947" strokeWidth={1.5} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function IntentActionIcon({selected = false}: {selected?: boolean}) {
+  const color = selected ? colors.primary : '#3C4947';
+  return (
+    <Svg width={15} height={15} viewBox="0 0 18 18" fill="none">
+      <Path
+        d="M5.45 2.25H12.55C13.65 2.25 14.5 3.13 14.5 4.23V15C14.5 15.62 13.84 16.02 13.3 15.73L9.42 13.62C9.16 13.48 8.84 13.48 8.58 13.62L4.7 15.73C4.16 16.02 3.5 15.62 3.5 15V4.23C3.5 3.13 4.35 2.25 5.45 2.25Z"
+        fill={selected ? colors.primary : 'none'}
+        stroke={color}
+        strokeWidth={1.35}
+        strokeLinejoin="round"
+      />
+      {selected ? null : (
+        <Path d="M9 5.8V10.2M6.8 8H11.2" stroke={color} strokeWidth={1.35} strokeLinecap="round" />
+      )}
+    </Svg>
+  );
+}
+
+function PhoneIcon() {
+  return (
+    <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7 12.8 12.8 0 0 0 .7 2.8 2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2Z"
+        stroke={colors.primary}
+        strokeWidth={1.5}
+      />
     </Svg>
   );
 }
@@ -307,6 +482,10 @@ const styles = StyleSheet.create({
     color: colors.price,
     fontSize: 16,
     lineHeight: 20,
+  },
+  negotiateValue: {
+    color: colors.primary,
+    fontSize: 14,
   },
   priceUnit: {
     fontFamily: fonts.manropeRegular,
@@ -380,14 +559,14 @@ const empStyles = StyleSheet.create({
   negotiate: {
     fontFamily: fonts.manropeSemiBold,
     color: colors.primary,
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 18,
   },
   tagRow: {flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8},
   time: {color: '#3C4947', fontSize: 11, lineHeight: 14},
   actionDivider: {height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(0,106,97,0.05)'},
   actions: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
-  actionButton: {flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 4},
+  actionButton: {flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 4},
   actionText: {color: '#3C4947', fontSize: 12, lineHeight: 16},
   actionTextPrimary: {color: colors.primary, fontWeight: '500'},
   actionVDivider: {width: StyleSheet.hairlineWidth, height: 13, backgroundColor: '#3C4947'},

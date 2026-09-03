@@ -1,5 +1,5 @@
-import React, {memo, useState} from 'react';
-import {Pressable, StyleSheet, Text, View} from 'react-native';
+import React, {memo, useEffect, useState} from 'react';
+import {Alert, Pressable, StyleSheet, Text, View} from 'react-native';
 import Svg, {Path} from 'react-native-svg';
 import {colors} from '../../theme/colors';
 import {fonts} from '../../theme/typography';
@@ -9,32 +9,51 @@ import {buildOriginalTextPayload, type OriginalTextPayload} from '../../utils/or
 import {
   colorForOfferField,
   colorForTag,
-  extractCity,
+  formatGoodsLocation,
   formatPublishTime,
   parseWeight,
   splitTags,
 } from '../../utils/offer';
+import {
+  addIntentPlate,
+  createPlateSnapshotFromEmployee,
+  getIntentPlateKeys,
+  recordRecentContactPlate,
+  removeIntentPlate,
+  type PlateKind,
+} from '../../utils/plateFollowStore';
 import {OfferTagChip} from './OfferTagChip';
 
 type Props = {
   group: MerchantOfferGroup;
   isInquiry?: boolean;
+  country?: string | null;
+  factoryNo?: string | null;
+  productName?: string | null;
   onCopyPhone?: string;
   onDial?: string;
   onViewOriginalText?: (payload: OriginalTextPayload) => void;
+  onMerchantPress?: () => void;
   defaultExpanded?: boolean;
+  hideSummaryMeta?: boolean;
 };
 
 function MerchantOfferGroupCardInner({
   group,
   isInquiry,
+  country,
+  factoryNo,
+  productName,
   onCopyPhone,
   onDial,
   onViewOriginalText,
+  onMerchantPress,
   defaultExpanded,
+  hideSummaryMeta,
 }: Props) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   const merchantName = group.merchantName || `商家-${group.merchantId ?? ''}`;
+  const plateType: PlateKind = isInquiry ? 'inquiry' : 'offer';
 
   const prices = (group.employeeOffers ?? [])
     .map(item => Number(item.price))
@@ -43,7 +62,7 @@ function MerchantOfferGroupCardInner({
   const priceMax = prices.length ? Math.max(...prices) : null;
 
   const firstLocation = firstNonEmpty(
-    (group.employeeOffers ?? []).map(item => extractCity(item.goodsLocation)),
+    (group.employeeOffers ?? []).map(item => formatGoodsLocation(item.goodsLocation)),
   );
   const goodsTypes = uniqueNonEmpty((group.employeeOffers ?? []).map(item => item.goodsType));
   const feedings = uniqueNonEmpty((group.employeeOffers ?? []).map(item => item.feedingType));
@@ -65,7 +84,16 @@ function MerchantOfferGroupCardInner({
                   <FamousCrown />
                 </View>
               ) : null}
-              <Text style={styles.merchantName}>{merchantName}</Text>
+              <Pressable
+                disabled={!onMerchantPress}
+                onPress={event => {
+                  event.stopPropagation();
+                  onMerchantPress?.();
+                }}
+                style={styles.merchantNameButton}>
+                <Text style={styles.merchantName} numberOfLines={1}>{merchantName}</Text>
+                <Text style={styles.merchantNameChevron}> &gt;</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -95,17 +123,19 @@ function MerchantOfferGroupCardInner({
           </View>
         </View>
 
-        <View style={styles.tagRow}>
-          {firstLocation ? <OfferTagChip text={firstLocation} variant="location" /> : null}
-          {goodsTypes.slice(0, 2).map(text => renderFieldChip('goodsType', text))}
-          {feedings.slice(0, 2).map(text => renderFieldChip('feedingType', text))}
-          {fatRatios.slice(0, 2).map(text => renderFieldChip('fatRatio', text))}
-          {breeds.slice(0, 2).map(text => renderFieldChip('cattleBreed', text))}
-          {tags.slice(0, 4).map(tag => {
-            const {bg, fg} = colorForTag(tag);
-            return <OfferTagChip key={`tag-${tag}`} text={tag} variant="colored" bg={bg} fg={fg} />;
-          })}
-        </View>
+        {!hideSummaryMeta ? (
+          <View style={styles.tagRow}>
+            {firstLocation ? <OfferTagChip text={firstLocation} variant="location" /> : null}
+            {goodsTypes.slice(0, 2).map(text => renderFieldChip('goodsType', text))}
+            {feedings.slice(0, 2).map(text => renderFieldChip('feedingType', text))}
+            {fatRatios.slice(0, 2).map(text => renderFieldChip('fatRatio', text))}
+            {breeds.slice(0, 2).map(text => renderFieldChip('cattleBreed', text))}
+            {tags.slice(0, 4).map(tag => {
+              const {bg, fg} = colorForTag(tag);
+              return <OfferTagChip key={`tag-${tag}`} text={tag} variant="colored" bg={bg} fg={fg} />;
+            })}
+          </View>
+        ) : null}
       </Pressable>
 
       {expanded ? (
@@ -120,6 +150,12 @@ function MerchantOfferGroupCardInner({
               }
               onDial={() => dialPhone(offer.contactPhone ?? onDial ?? null)}
               onViewOriginalText={onViewOriginalText}
+              country={country}
+              factoryNo={factoryNo}
+              productName={productName}
+              merchantName={group.merchantName}
+              merchantId={group.merchantId}
+              plateType={plateType}
             />
           ))}
           {group.offerCount > (group.employeeOffers?.length ?? 0) ? (
@@ -139,12 +175,24 @@ function EmployeeOfferRow({
   onCopyPhone,
   onDial,
   onViewOriginalText,
+  country,
+  factoryNo,
+  productName,
+  merchantName,
+  merchantId,
+  plateType,
 }: {
   offer: EmployeeOfferItem;
   merchantPhone?: string | null;
   onCopyPhone?: () => void;
   onDial?: () => void;
   onViewOriginalText?: (payload: OriginalTextPayload) => void;
+  country?: string | null;
+  factoryNo?: string | null;
+  productName?: string | null;
+  merchantName?: string | null;
+  merchantId?: number | string | null;
+  plateType: PlateKind;
 }) {
   const [weightValue, weightUnit] = parseWeight(offer.weight);
   const time = formatPublishTime(offer.publishTime);
@@ -153,6 +201,56 @@ function EmployeeOfferRow({
   const cattleBreed = offer.cattleBreed?.trim() ?? '';
   const remark = offer.remark?.trim() ?? '';
   const tags = splitTags(offer.tags, 4);
+  const [intentAdded, setIntentAdded] = useState(false);
+  const snapshot = createPlateSnapshotFromEmployee(offer, plateType, {
+    country,
+    factoryNo,
+    productName,
+    merchantName,
+    merchantId,
+    contactPhone: merchantPhone,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    getIntentPlateKeys()
+      .then(keys => {
+        if (!cancelled) setIntentAdded(keys.has(snapshot.key));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [snapshot.key]);
+
+  async function handleToggleIntent() {
+    if (intentAdded) {
+      try {
+        await removeIntentPlate(snapshot.key);
+        setIntentAdded(false);
+      } catch {
+        // Cancelling should stay quiet; the next focus/load will resync local state.
+      }
+      return;
+    }
+
+    try {
+      await addIntentPlate(snapshot);
+      setIntentAdded(true);
+    } catch (error) {
+      Alert.alert('加入失败', error instanceof Error ? error.message : '请稍后重试');
+    }
+  }
+
+  function handleCopyPhone() {
+    recordRecentContactPlate(snapshot, 'wechat').catch(() => undefined);
+    onCopyPhone?.();
+  }
+
+  function handleDial() {
+    recordRecentContactPlate(snapshot, 'phone').catch(() => undefined);
+    onDial?.();
+  }
 
   return (
     <View style={styles.offerCard}>
@@ -186,7 +284,7 @@ function EmployeeOfferRow({
 
       <View style={styles.offerTagRow}>
         {time ? <Text style={styles.timeText}>{time}</Text> : null}
-        {offer.goodsLocation ? <OfferTagChip text={extractCity(offer.goodsLocation)} variant="location" /> : null}
+        {offer.goodsLocation ? <OfferTagChip text={formatGoodsLocation(offer.goodsLocation)} variant="location" /> : null}
         {offer.goodsType ? renderFieldChip('goodsType', offer.goodsType) : null}
         {feedingType ? renderFieldChip('feedingType', feedingType) : null}
         {fatRatio ? renderFieldChip('fatRatio', fatRatio) : null}
@@ -207,6 +305,11 @@ function EmployeeOfferRow({
             onViewOriginalText?.(
               buildOriginalTextPayload({
                 text: offer.offerOriginalText,
+                intent: plateType,
+                offerType: offer.offerType,
+                country,
+                factoryNo,
+                productName,
                 price: offer.price,
                 goodsLocation: offer.goodsLocation,
                 goodsType: offer.goodsType,
@@ -217,6 +320,7 @@ function EmployeeOfferRow({
                 remark,
                 publishTime: offer.publishTime,
                 userNickname: offer.userNickname,
+                merchantName,
               }),
             )
           }>
@@ -224,12 +328,19 @@ function EmployeeOfferRow({
           <Text style={styles.actionText}>查看原文</Text>
         </Pressable>
         <View style={styles.actionVDivider} />
-        <Pressable style={styles.actionButton} onPress={onCopyPhone}>
+        <Pressable style={styles.actionButton} onPress={handleToggleIntent}>
+          <IntentActionIcon selected={intentAdded} />
+          <Text style={[styles.actionText, intentAdded && styles.actionTextPrimary]}>
+            {intentAdded ? '已加意向' : '加意向'}
+          </Text>
+        </Pressable>
+        <View style={styles.actionVDivider} />
+        <Pressable style={styles.actionButton} onPress={handleCopyPhone}>
           <AddSquareIcon />
           <Text style={styles.actionText}>添加微信</Text>
         </Pressable>
         <View style={styles.actionVDivider} />
-        <Pressable style={styles.actionButton} onPress={onDial}>
+        <Pressable style={styles.actionButton} onPress={handleDial}>
           <PhoneIcon />
           <Text style={[styles.actionText, styles.actionTextPrimary]}>拨打电话</Text>
         </Pressable>
@@ -346,6 +457,24 @@ function AddSquareIcon() {
   );
 }
 
+function IntentActionIcon({selected = false}: {selected?: boolean}) {
+  const color = selected ? colors.primary : '#3C4947';
+  return (
+    <Svg width={15} height={15} viewBox="0 0 18 18" fill="none">
+      <Path
+        d="M5.45 2.25H12.55C13.65 2.25 14.5 3.13 14.5 4.23V15C14.5 15.62 13.84 16.02 13.3 15.73L9.42 13.62C9.16 13.48 8.84 13.48 8.58 13.62L4.7 15.73C4.16 16.02 3.5 15.62 3.5 15V4.23C3.5 3.13 4.35 2.25 5.45 2.25Z"
+        fill={selected ? colors.primary : 'none'}
+        stroke={color}
+        strokeWidth={1.35}
+        strokeLinejoin="round"
+      />
+      {selected ? null : (
+        <Path d="M9 5.8V10.2M6.8 8H11.2" stroke={color} strokeWidth={1.35} strokeLinecap="round" />
+      )}
+    </Svg>
+  );
+}
+
 function PhoneIcon() {
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
@@ -409,14 +538,30 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#8A6600',
   },
-  merchantName: {
-    flex: 1,
+  merchantNameButton: {
     flexShrink: 1,
+    flexGrow: 0,
+    minWidth: 0,
+    maxWidth: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+  },
+  merchantName: {
+    flexShrink: 1,
+    minWidth: 0,
     color: colors.text,
     fontSize: 16,
     lineHeight: 22,
     fontWeight: '600',
-    flexWrap: 'wrap',
+  },
+  merchantNameChevron: {
+    color: colors.text,
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '600',
+    marginLeft: 2,
+    flexShrink: 0,
   },
   tagRow: {
     flexDirection: 'row',
@@ -468,24 +613,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 4,
   },
   userBlock: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     flex: 1,
+    minWidth: 0,
   },
   userName: {
     color: colors.text,
     fontSize: 14,
     fontWeight: '500',
     flexShrink: 1,
+    minWidth: 0,
   },
   priceCol: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 8,
+    flexShrink: 0,
   },
   priceLineSmall: {
     flexDirection: 'row',

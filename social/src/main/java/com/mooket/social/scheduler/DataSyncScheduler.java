@@ -132,7 +132,7 @@ public class DataSyncScheduler {
      * 每天 8:00 / 14:00 / 20:00 执行 dict_factory → dict_brand → dict_merchant 串行同步
      * 依赖顺序：dict_factory（无依赖）→ dict_brand（依赖factory）→ dict_merchant（无依赖）
      */
-    @Scheduled(cron = "0 0 8,14,20 * * ?")
+    @Scheduled(cron = "0 0 8,14,20 * * ?", zone = "Asia/Shanghai")
     public void syncDictFactoryAndBrandAndMerchant() {
         // 1. dict_factory 全量同步
         System.out.println("[DataSyncScheduler] 开始执行 dict_factory 定时同步...");
@@ -176,7 +176,7 @@ public class DataSyncScheduler {
      * 每天 0:00 执行一次 biz_offer 旧数据清理
      * 删除 data_date < CURRENT_DATE - INTERVAL '1 day' 的数据（即前天0点之前的数据）
      */
-    @Scheduled(cron = "0 0 0 * * ?")
+    @Scheduled(cron = "0 0 0 * * ?", zone = "Asia/Shanghai")
     public void cleanupOldBizOfferData() {
         System.out.println("[DataSyncScheduler] 开始执行 biz_offer 旧数据清理...");
         try {
@@ -191,7 +191,7 @@ public class DataSyncScheduler {
      * 每天 1:00 执行一次 stat_* 表旧数据清理
      * 删除 stat_date < CURRENT_DATE - INTERVAL '30 day' 的数据（保留30天）
      */
-    @Scheduled(cron = "0 0 1 * * ?")
+    @Scheduled(cron = "0 0 1 * * ?", zone = "Asia/Shanghai")
     public void cleanupOldStatData() {
         System.out.println("[DataSyncScheduler] 开始执行 stat_* 表旧数据清理（保留30天）...");
         try {

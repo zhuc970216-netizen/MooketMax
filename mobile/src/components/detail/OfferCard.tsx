@@ -9,7 +9,7 @@ import {
   colorForOfferField,
   colorForTag,
   computePriceRange,
-  extractCity,
+  formatGoodsLocation,
   formatPublishTime,
   parseWeight,
   splitTags,
@@ -40,13 +40,16 @@ export function OfferCard({
 }: Props) {
   const employeePrices = offer.employeeOffers?.map(item => item.price);
   const [priceText, priceUnit] = computePriceRange(employeePrices, offer.price, offer.priceMax);
+  const isNegotiatedPrice = Boolean(priceText?.includes('协商'));
 
   const factoryLabel = offer.factoryNo
     ? `${offer.country ?? ''}${offer.factoryNo}`
     : `${offer.country ?? ''}厂号不限`;
 
   const allLocations = uniqueStrings(
-    (offer.employeeOffers ?? []).map(item => extractCity(item.goodsLocation)).concat(extractCity(offer.goodsLocation)),
+    (offer.employeeOffers ?? [])
+      .map(item => formatGoodsLocation(item.goodsLocation))
+      .concat(formatGoodsLocation(offer.goodsLocation)),
   );
   const allGoodsTypes = uniqueStrings(
     (offer.employeeOffers ?? []).map(item => item.goodsType ?? '').concat(offer.goodsType ?? ''),
@@ -83,7 +86,9 @@ export function OfferCard({
         <View style={styles.priceWrap}>
           {priceText ? (
             <View style={styles.priceLine}>
-              <Text style={styles.priceValue}>{priceText}</Text>
+              <Text style={[styles.priceValue, isNegotiatedPrice && styles.negotiateValue]}>
+                {priceText}
+              </Text>
               {priceUnit ? <Text style={styles.priceUnit}>{priceUnit}</Text> : null}
             </View>
           ) : null}
@@ -124,6 +129,9 @@ export function OfferCard({
               key={`${item.offerId ?? `${item.userNickname}-${index}`}`}
               offer={item}
               merchantPhone={merchantPhone}
+              country={offer.country}
+              factoryNo={offer.factoryNo}
+              productName={offer.productName}
               fallbackGoodsType={offer.goodsType}
               fallbackFeedingType={offer.feedingType}
               onCopyPhone={onCopyPhone}
@@ -139,6 +147,9 @@ export function OfferCard({
 function EmployeeOfferCard({
   offer,
   merchantPhone,
+  country,
+  factoryNo,
+  productName,
   fallbackGoodsType,
   fallbackFeedingType,
   onCopyPhone,
@@ -147,6 +158,9 @@ function EmployeeOfferCard({
 }: {
   offer: EmployeeOffer;
   merchantPhone?: string | null;
+  country?: string | null;
+  factoryNo?: string | null;
+  productName?: string | null;
   fallbackGoodsType?: string | null;
   fallbackFeedingType?: string | null;
   onCopyPhone?: () => void;
@@ -205,7 +219,7 @@ function EmployeeOfferCard({
         <View style={styles.employeeTagRow}>
           {time ? <Text style={styles.timeText}>{time}</Text> : null}
           {offer.goodsLocation ? (
-            <OfferTagChip text={extractCity(offer.goodsLocation)} variant="location" />
+            <OfferTagChip text={formatGoodsLocation(offer.goodsLocation)} variant="location" />
           ) : null}
           {goodsType ? <OfferTagChip text={goodsType} variant="colored" {...colorForOfferField('goodsType')} /> : null}
           {feeding ? <OfferTagChip text={feeding} variant="colored" {...colorForOfferField('feedingType')} /> : null}
@@ -227,6 +241,10 @@ function EmployeeOfferCard({
               onViewOriginalText?.(
                 buildOriginalTextPayload({
                   text: offer.offerOriginalText,
+                  intent: 'offer',
+                  country,
+                  factoryNo,
+                  productName,
                   price: offer.price,
                   priceMax: offer.priceMax,
                   goodsLocation: offer.goodsLocation,
@@ -328,6 +346,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  negotiateValue: {
+    color: colors.primary,
+    fontSize: 14,
+  },
   priceUnit: {
     color: colors.text,
     fontSize: 10,
@@ -337,8 +359,8 @@ const styles = StyleSheet.create({
   negotiateText: {
     fontFamily: fonts.manropeSemiBold,
     color: colors.primary,
-    fontSize: 16,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 18,
   },
   weightValue: {
     color: colors.text,

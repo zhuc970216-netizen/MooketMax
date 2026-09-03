@@ -1,7 +1,9 @@
-import React, {useCallback, useEffect, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   Platform,
   Pressable,
   RefreshControl,
@@ -18,76 +20,58 @@ import {useFocusEffect} from '@react-navigation/native';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {mooketApi} from '../api/mooketApi';
-import {MasonryDraggableGrid} from '../components/home/MasonryDraggableGrid';
 import {HomeCardSwitcher} from '../components/home/cards';
 import {MooketMaxLogo} from '../components/login/LoginIcons';
 import {DEFAULT_CATEGORY} from '../config/env';
 import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
 import {fonts} from '../theme/typography';
-import type {HomeCardItem, HomeStatData, HotSearchItem} from '../types/api';
-import {buildHomeCardSearchHistoryPayload, buildHomeFallbackExampleCards, getHomeCardEntityKey} from '../utils/homeFallbackCards';
+import type {HomeCardItem, HomeStatData, HotSearchItem, OfferFeedItem} from '../types/api';
 import {openHomeCard, openHotSearch} from '../utils/navigation';
-import {getAddSelfSelectMessage, getRemoveSelfSelectMessage} from '../utils/selfSelectEntity';
+import {getPlateFollowCounts} from '../utils/plateFollowStore';
+import {getRemoveSelfSelectMessage} from '../utils/selfSelectEntity';
 import {
-  applySavedSelfSelectCardOrder,
-  getSelfSelectCardOrderKey,
-  saveSelfSelectCardOrder,
-} from '../utils/selfSelectCardOrder';
+  enrichSelfSelectCards,
+  mergeSelfSelectCardsWithHistories,
+  sortSelfSelectCardsByCreateTime,
+} from '../utils/selfSelectCards';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 const categories = ['牛', '猪'];
-
-// 28x28 右上角「加入自选」角标icon (Figma 263:3139 即archive-add)
-const archiveAddIconXml = `<svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9.51562 6.98914H6.23438" stroke="#171D1C" stroke-width="1.125" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/><path d="M7.875 5.38782V8.66907" stroke="#171D1C" stroke-width="1.125" stroke-miterlimit="10" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.0382 1.3125H4.71196C3.31415 1.3125 2.17883 2.45438 2.17883 3.84563V13.0922C2.17883 14.2734 3.0254 14.7722 4.06227 14.2012L7.26477 12.4228C7.60602 12.2325 8.15727 12.2325 8.49196 12.4228L11.6945 14.2012C12.7313 14.7787 13.5779 14.28 13.5779 13.0922V3.84563C13.5713 2.45438 12.436 1.3125 11.0382 1.3125Z" stroke="#171D1C" stroke-width="1.125" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const HOME_INQUIRY_PAGE_SIZE = 30;
+const HOME_INQUIRY_VISIBLE_COUNT = 3;
+const HOME_INQUIRY_ROW_HEIGHT = 32;
+const HOME_INQUIRY_SCROLL_MS_PER_ROW = 2400;
+const HOME_INQUIRY_SCROLL_ANIMATION_MS = 520;
+const SHOW_HOME_ENTRY_BLOCKS = false;
 
 // 18x18 主色「移除删除」icon
 const archiveDelIconXml = `<svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg"><path d="M12.6152 1.5C14.2125 1.50013 15.5098 2.80482 15.5176 4.39453V14.9629C15.5174 16.32 14.5499 16.8901 13.3652 16.2305L9.70508 14.1973C9.32267 13.9798 8.69274 13.9799 8.30273 14.1973L4.64258 16.2305C3.45775 16.8828 2.49042 16.3126 2.49023 14.9629V4.39453C2.49049 2.80482 3.78753 1.50012 5.38477 1.5H12.6152ZM7.125 7.4248C6.81756 7.4248 6.5626 7.67989 6.5625 7.9873C6.5625 8.2948 6.8175 8.5498 7.125 8.5498H10.875C11.1825 8.5498 11.4375 8.2948 11.4375 7.9873C11.4374 7.67989 11.1824 7.4248 10.875 7.4248H7.125Z" fill="#006A61"/></svg>`;
 
-/** 估算卡片高度（px），用于瀑布流平衡分列 */
-function estimateCardHeight(card: HomeCardItem): number {
-  switch (card.cardType) {
-    case 'factoryProduct':
-    case 'brandProduct':
-      return 280; // 价格 + 趋势图 + 表格 + 底栏
-    case 'merchant':
-      return 200; // 商家名 + 最新报盘 + 底栏
-    case 'factory':
-      return 180; // 排名列表
-    case 'countryProduct':
-      return 160; // 表格 + 底栏
-    case 'country':
-      return 150; // 双列表格
-    case 'product':
-    case 'brand':
-      return 130; // 简洁统计
-    default:
-      return 150;
-  }
-}
-
 export function HomeScreen({navigation}: Props) {
   const insets = useSafeAreaInsets();
   const [category, setCategory] = useState(DEFAULT_CATEGORY);
-  const [tab, setTab] = useState<0 | 1>(0);
   const [stat, setStat] = useState<HomeStatData | null>(null);
   const [hotSearches, setHotSearches] = useState<HotSearchItem[]>([]);
   const [cards, setCards] = useState<HomeCardItem[]>([]);
+  const [homeInquiries, setHomeInquiries] = useState<OfferFeedItem[]>([]);
+  const [followCounts, setFollowCounts] = useState({intentCount: 0, recentCount: 0});
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [headerSticky, setHeaderSticky] = useState(false);
-  const [dismissedExampleKeys, setDismissedExampleKeys] = useState<Set<string>>(new Set());
-  const [promotedExampleKeys, setPromotedExampleKeys] = useState<Set<string>>(new Set());
   const headerHeightRef = useRef(0);
   const [fixedTopBottom, setFixedTopBottom] = useState(0);
   const focusRefreshReadyRef = useRef(false);
-  const autoTabSwitchReadyRef = useRef(true);
   const loadRef = useRef<(mode?: 'initial' | 'refresh' | 'silent') => Promise<void>>(async () => undefined);
   const sectionListRef = useRef<SectionList>(null);
+  const inquiryTickerY = useRef(new Animated.Value(0)).current;
+  const inquiryTickerLoopRef = useRef<Animated.CompositeAnimation | null>(null);
+  const inquiryTickerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inquiryTickerStepRef = useRef(0);
   const handleEditToggle = useCallback(() => {
     setEditMode(prev => {
       const next = !prev;
@@ -97,14 +81,6 @@ export function HomeScreen({navigation}: Props) {
       return next;
     });
   }, []);
-
-  const handleCardsReorder = useCallback(
-    (data: HomeCardItem[]) => {
-      setCards(data);
-      saveSelfSelectCardOrder(category, data).catch(() => undefined);
-    },
-    [category],
-  );
 
   const performScrollToTop = useCallback((animated: boolean) => {
     const list = sectionListRef.current as
@@ -153,46 +129,39 @@ export function HomeScreen({navigation}: Props) {
     }
 
     try {
-      const [statData, hotData, selfSelectData, recentData] = await Promise.all([
+      const [statData, hotData, selfSelectData, selfSelectHistories, inquiryFeedData, followCountData] = await Promise.all([
         mooketApi.getHomeStatData(category),
         mooketApi.getHotSearchRecommendations(category),
         mooketApi.getSelfSelectCards(category),
-        mooketApi.getRecentSearchCards(category),
+        mooketApi.getSelfSelectSearches(500).catch(() => []),
+        mooketApi
+          .getOfferFeed({
+            category,
+            type: 'inquiry',
+            page: 1,
+            pageSize: HOME_INQUIRY_PAGE_SIZE,
+            sortBy: 'publishTime',
+          })
+          .catch(() => null),
+        getPlateFollowCounts().catch(() => ({intentCount: 0, recentCount: 0})),
       ]);
-      const selfSelectCards = selfSelectData.cards ?? [];
-      const recentCards = recentData.cards ?? [];
+      const mergedSelfSelectCards = mergeSelfSelectCardsWithHistories(
+        selfSelectData.cards ?? [],
+        selfSelectHistories,
+      );
+      const selfSelectCards = await enrichSelfSelectCards(category, mergedSelfSelectCards);
 
       setStat(statData);
       setHotSearches(hotData);
-      if (autoTabSwitchReadyRef.current && selfSelectCards.length === 0) {
-        autoTabSwitchReadyRef.current = false;
-        setTab(1);
-        if (recentCards.length > 0) {
-          setCards(recentCards);
-        } else {
-          const fallback = await mooketApi.getHomeCards(category, 0);
-          setCards(buildHomeFallbackExampleCards(fallback.cards ?? [], promotedExampleKeys, dismissedExampleKeys));
-        }
-        return;
-      }
-
-      autoTabSwitchReadyRef.current = false;
-
-      if (tab === 0) {
-        setCards(await applySavedSelfSelectCardOrder(category, selfSelectCards));
-      } else {
-        if (recentCards.length > 0) {
-          setCards(recentCards);
-        } else {
-          const fallback = await mooketApi.getHomeCards(category, 0);
-          setCards(buildHomeFallbackExampleCards(fallback.cards ?? [], promotedExampleKeys, dismissedExampleKeys));
-        }
-      }
+      setCards(sortSelfSelectCardsByCreateTime(selfSelectCards, selfSelectHistories));
+      setHomeInquiries(inquiryFeedData?.items ?? []);
+      setFollowCounts(followCountData);
+      inquiryTickerY.setValue(0);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [category, dismissedExampleKeys, promotedExampleKeys, tab]);
+  }, [category, inquiryTickerY]);
 
   useEffect(() => {
     loadRef.current = load;
@@ -212,41 +181,85 @@ export function HomeScreen({navigation}: Props) {
     }, []),
   );
 
+  useEffect(() => {
+    inquiryTickerLoopRef.current?.stop();
+    inquiryTickerLoopRef.current = null;
+    if (inquiryTickerIntervalRef.current) {
+      clearInterval(inquiryTickerIntervalRef.current);
+      inquiryTickerIntervalRef.current = null;
+    }
+    inquiryTickerStepRef.current = 0;
+
+    if (homeInquiries.length <= 1) {
+      inquiryTickerY.setValue(0);
+      return undefined;
+    }
+
+    inquiryTickerY.setValue(0);
+    inquiryTickerIntervalRef.current = setInterval(() => {
+      const nextStep = inquiryTickerStepRef.current + 1;
+      const animation = Animated.timing(inquiryTickerY, {
+        toValue: -(nextStep * HOME_INQUIRY_ROW_HEIGHT),
+        duration: HOME_INQUIRY_SCROLL_ANIMATION_MS,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      });
+
+      inquiryTickerLoopRef.current = animation;
+      animation.start(({finished}) => {
+        if (!finished) return;
+        if (nextStep >= homeInquiries.length) {
+          inquiryTickerStepRef.current = 0;
+          inquiryTickerY.setValue(0);
+        } else {
+          inquiryTickerStepRef.current = nextStep;
+        }
+      });
+    }, HOME_INQUIRY_SCROLL_MS_PER_ROW);
+
+    return () => {
+      inquiryTickerLoopRef.current?.stop();
+      inquiryTickerLoopRef.current = null;
+      if (inquiryTickerIntervalRef.current) {
+        clearInterval(inquiryTickerIntervalRef.current);
+        inquiryTickerIntervalRef.current = null;
+      }
+    };
+  }, [homeInquiries.length, inquiryTickerY]);
+
+  const visibleHomeInquiries = useMemo(() => {
+    if (homeInquiries.length === 0) return [];
+    if (homeInquiries.length === 1) {
+      return homeInquiries;
+    }
+
+    const repeated = [...homeInquiries];
+    while (repeated.length < homeInquiries.length + HOME_INQUIRY_VISIBLE_COUNT) {
+      repeated.push(...homeInquiries);
+    }
+    return repeated;
+  }, [homeInquiries]);
+
   function switchCategory(value: string) {
     setCategory(value);
     setMenuOpen(false);
     setEditMode(false);
-    setDismissedExampleKeys(new Set());
-    setPromotedExampleKeys(new Set());
-    autoTabSwitchReadyRef.current = true;
   }
 
-  function switchTab(value: 0 | 1) {
-    setTab(value);
-    setEditMode(false);
-    autoTabSwitchReadyRef.current = false;
+  function openInquiryFeed() {
+    navigation.navigate('OfferFeed', {category, initialTab: 'inquiry', inquiryOnly: true});
   }
 
-  async function deleteHistory(historyId: number) {
-    const previous = cards;
-    setCards(prev => prev.filter(item => item.historyId !== historyId));
-    try {
-      await mooketApi.deleteSearchHistory(historyId);
-    } catch (error) {
-      setCards(previous);
-      Alert.alert('删除失败', error instanceof Error ? error.message : '请稍后重试');
-    }
+  function openSearch(initialTab?: 'offer' | 'inquiry' | 'merchant') {
+    navigation.navigate('Search', initialTab ? {category, initialTab} : {category});
   }
 
-  async function moveToSelfSelect(historyId: number) {
-    const previous = cards;
-    setCards(prev => prev.filter(item => item.historyId !== historyId));
-    try {
-      await mooketApi.moveToSelfSelect(historyId);
-    } catch (error) {
-      setCards(previous);
-      Alert.alert('添加失败', error instanceof Error ? error.message : '请稍后重试');
-    }
+  function openIntentPlates() {
+    navigation.navigate('PlateFollow', {initialTab: 'intent', category});
+  }
+
+  function openRecentContacts() {
+    navigation.navigate('PlateFollow', {initialTab: 'recent', category});
   }
 
   async function cancelSelfSelect(historyId: number) {
@@ -260,89 +273,15 @@ export function HomeScreen({navigation}: Props) {
     }
   }
 
-  async function addExampleCardToSelfSelect(card: HomeCardItem) {
-    const payload = buildHomeCardSearchHistoryPayload(card);
-    const entityKey = card.exampleEntityKey ?? getHomeCardEntityKey(card);
-    if (!payload || !entityKey) return;
-
-    try {
-      await mooketApi.saveSearchHistory({...payload, isSelfSelect: 1});
-      setPromotedExampleKeys(prev => {
-        const next = new Set(prev);
-        next.add(entityKey);
-        return next;
-      });
-      setCards(prev =>
-        prev.filter(item => (item.exampleEntityKey ?? getHomeCardEntityKey(item)) !== entityKey),
-      );
-    } catch (error) {
-      Alert.alert('添加失败', error instanceof Error ? error.message : '请稍后重试');
-    }
-  }
-
-  function dismissExampleCard(card: HomeCardItem) {
-    const entityKey = card.exampleEntityKey ?? getHomeCardEntityKey(card);
-    if (!entityKey) return;
-    setDismissedExampleKeys(prev => {
-      const next = new Set(prev);
-      next.add(entityKey);
-      return next;
-    });
-    setCards(prev => prev.filter(item => (item.exampleEntityKey ?? getHomeCardEntityKey(item)) !== entityKey));
-  }
-
-  function onArchiveAdd(card: HomeCardItem) {
-    if (card.isExample) {
-      Alert.alert('加入自选', getAddSelfSelectMessage(card), [
-        {text: '取消', style: 'cancel'},
-        {text: '确定', onPress: () => addExampleCardToSelfSelect(card).catch(() => undefined)},
-      ]);
-      return;
-    }
+  function onArchiveDelete(card: HomeCardItem) {
     if (!card.historyId) return;
-    Alert.alert('加入自选', getAddSelfSelectMessage(card), [
+    Alert.alert('移出自选', getRemoveSelfSelectMessage(card), [
       {text: '取消', style: 'cancel'},
-      {text: '确定', onPress: () => moveToSelfSelect(card.historyId!).catch(() => undefined)},
+      {text: '移出', style: 'destructive', onPress: () => cancelSelfSelect(card.historyId!).catch(() => undefined)},
     ]);
   }
 
-  function onArchiveDelete(card: HomeCardItem) {
-    if (card.isExample) {
-      Alert.alert('删除示例', '确定删除这张示例卡片吗？', [
-        {text: '取消', style: 'cancel'},
-        {text: '删除', style: 'destructive', onPress: () => dismissExampleCard(card)},
-      ]);
-      return;
-    }
-    if (!card.historyId) return;
-    if (tab === 0) {
-      Alert.alert('移出自选', getRemoveSelfSelectMessage(card), [
-        {text: '取消', style: 'cancel'},
-        {text: '移出', style: 'destructive', onPress: () => cancelSelfSelect(card.historyId!).catch(() => undefined)},
-      ]);
-    } else {
-      Alert.alert('删除记录', '确定删除这条历史搜索吗？', [
-        {text: '取消', style: 'cancel'},
-        {text: '删除', style: 'destructive', onPress: () => deleteHistory(card.historyId!).catch(() => undefined),},
-      ]);
-    }
-  }
-
-  // 把卡片按估算高度平衡分配到左右两列（瀑布流）
-  const leftColumn: HomeCardItem[] = [];
-  const rightColumn: HomeCardItem[] = [];
-  let leftH = 0;
-  let rightH = 0;
-  cards.forEach(card => {
-    const h = estimateCardHeight(card);
-    if (leftH <= rightH) {
-      leftColumn.push(card);
-      leftH += h;
-    } else {
-      rightColumn.push(card);
-      rightH += h;
-    }
-  });
+  const {leftColumn, rightColumn} = splitColumns(cards);
 
   // 用 SectionList：section header 固定在mooketmax栏下方
   const sections = [{key: 'cards', data: [{leftColumn, rightColumn}]}];
@@ -388,7 +327,8 @@ export function HomeScreen({navigation}: Props) {
         }}
         scrollEventThrottle={16}
         ListHeaderComponent={
-          <View style={styles.scrollableTop} onLayout={(e) => { headerHeightRef.current = e.nativeEvent.layout.height; }}>
+          <View onLayout={(e) => { headerHeightRef.current = e.nativeEvent.layout.height; }}>
+          <View style={styles.scrollableTop}>
             {/* 50dp 搜索栏 */}
             <View style={styles.searchWrap}>
               <View style={styles.searchBox}>
@@ -399,14 +339,14 @@ export function HomeScreen({navigation}: Props) {
                 <View style={styles.searchVDivider} />
                 <Pressable
                   style={styles.searchPlaceholder}
-                  onPress={() => navigation.navigate('Search', {category})}>
+                  onPress={() => openSearch()}>
                   <Text style={styles.searchPlaceholderText} numberOfLines={1}>
                     搜索国家、厂号、产品、商家、品牌
                   </Text>
                 </Pressable>
-                <View style={styles.searchIcon}>
+                <Pressable hitSlop={8} onPress={() => openSearch()} style={styles.searchIcon}>
                   <SearchIcon24 />
-                </View>
+                </Pressable>
               </View>
               {/* menu rendered at root level */}
             </View>
@@ -435,46 +375,48 @@ export function HomeScreen({navigation}: Props) {
               </ScrollView>
             </View>
           </View>
+          {SHOW_HOME_ENTRY_BLOCKS ? (
+            <>
+              <TradingGuideSection
+                offerCount={stat?.totalOfferCount}
+                inquiries={visibleHomeInquiries}
+                tickerTranslateY={inquiryTickerY}
+                onInquiryPress={openInquiryFeed}
+                onOfferSearchPress={() => openSearch('offer')}
+                onMerchantSearchPress={() => openSearch('merchant')}
+              />
+              <FollowUpSection
+                intentCount={followCounts.intentCount}
+                recentCount={followCounts.recentCount}
+                onIntentPress={openIntentPlates}
+                onRecentPress={openRecentContacts}
+              />
+            </>
+          ) : null}
+          </View>
         }
         renderSectionHeader={() => (
           <View style={styles.stickyBlock}>
-            {/* 深色 stat bar */}
-            <View style={styles.statBar}>
-              <View style={styles.statBarLeft}>
-                <View style={styles.statBadge}>
-                  <Text style={styles.statBadgeText}>近两日数据</Text>
-                </View>
-                <StatItem label="报盘" value={stat?.totalOfferCount ?? '--'} />
-                <StatItem label="求购" value={stat?.totalInquiryCount ?? '--'} />
-                <StatItem label="商家" value={stat?.merchantCount ?? '--'} />
-              </View>
-              <Text style={styles.statTime}>{stat?.statTime ?? '--:--'}</Text>
-            </View>
-
             {/* Tabs + 编辑 按钮 */}
             <View style={styles.tabsBar}>
               <Tab
                 text="自选数据"
-                active={tab === 0}
-                icon={<CandleIcon active={tab === 0} />}
-                onPress={() => switchTab(0)}
-              />
-              <Tab
-                text="历史搜索数据"
-                active={tab === 1}
-                icon={<ClockIcon active={tab === 1} />}
-                onPress={() => switchTab(1)}
+                active
+                icon={<CandleIcon active />}
+                onPress={() => undefined}
               />
               <View style={styles.tabsSpace} />
-              <Pressable onPress={handleEditToggle} style={styles.editButton}>
-                {editMode ? (
-                  <View style={styles.editDoneBadge}>
-                    <Text style={styles.editDoneText}>完成</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.editText}>编辑</Text>
-                )}
-              </Pressable>
+              {cards.length > 0 ? (
+                <Pressable onPress={handleEditToggle} style={styles.editButton}>
+                  {editMode ? (
+                    <View style={styles.editDoneBadge}>
+                      <Text style={styles.editDoneText}>完成</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.editText}>编辑</Text>
+                  )}
+                </Pressable>
+              ) : null}
             </View>
 
           </View>
@@ -484,27 +426,7 @@ export function HomeScreen({navigation}: Props) {
             return <ActivityIndicator color={colors.primary} style={styles.cardsLoading} />;
           }
           if (cards.length === 0) {
-            return <Text style={styles.empty}>{tab === 0 ? '暂无自选数据' : '暂无历史搜索数据'}</Text>;
-          }
-          if (editMode && tab === 0) {
-            return (
-              <MasonryDraggableGrid
-                cards={cards}
-                estimateHeight={estimateCardHeight}
-                keyExtractor={(card, index) => getSelfSelectCardOrderKey(card) ?? `card-${index}`}
-                onReorder={handleCardsReorder}
-                renderCard={card => (
-                  <CardWithEdit
-                    card={card}
-                    editMode={editMode}
-                    tab={tab}
-                    onPress={() => undefined}
-                    onArchiveAdd={() => onArchiveAdd(card)}
-                    onArchiveDelete={() => onArchiveDelete(card)}
-                  />
-                )}
-              />
-            );
+            return <EmptySelfSelectState onAdd={() => openSearch('offer')} />;
           }
           return (
             <View style={styles.gridRow}>
@@ -514,9 +436,7 @@ export function HomeScreen({navigation}: Props) {
                     key={`l-${card.cardType}-${card.historyId ?? index}`}
                     card={card}
                     editMode={editMode}
-                    tab={tab}
                     onPress={() => openHomeCard(navigation, category, card)}
-                    onArchiveAdd={() => onArchiveAdd(card)}
                     onArchiveDelete={() => onArchiveDelete(card)}
                   />
                 ))}
@@ -527,9 +447,7 @@ export function HomeScreen({navigation}: Props) {
                     key={`r-${card.cardType}-${card.historyId ?? index}`}
                     card={card}
                     editMode={editMode}
-                    tab={tab}
                     onPress={() => openHomeCard(navigation, category, card)}
-                    onArchiveAdd={() => onArchiveAdd(card)}
                     onArchiveDelete={() => onArchiveDelete(card)}
                   />
                 ))}
@@ -545,40 +463,25 @@ export function HomeScreen({navigation}: Props) {
       {/* 手动吸顶的 stat + tabs 覆盖层 */}
       {headerSticky ? (
         <View style={[styles.stickyOverlay, {top: fixedTopBottom}]}>
-          <View style={styles.statBar}>
-            <View style={styles.statBarLeft}>
-              <View style={styles.statBadge}>
-                <Text style={styles.statBadgeText}>近两日数据</Text>
-              </View>
-              <StatItem label="报盘" value={stat?.totalOfferCount ?? '--'} />
-              <StatItem label="求购" value={stat?.totalInquiryCount ?? '--'} />
-              <StatItem label="商家" value={stat?.merchantCount ?? '--'} />
-            </View>
-            <Text style={styles.statTime}>{stat?.statTime ?? '--:--'}</Text>
-          </View>
           <View style={styles.tabsBar}>
             <Tab
               text="自选数据"
-              active={tab === 0}
-              icon={<CandleIcon active={tab === 0} />}
-              onPress={() => switchTab(0)}
-            />
-            <Tab
-              text="历史搜索数据"
-              active={tab === 1}
-              icon={<ClockIcon active={tab === 1} />}
-              onPress={() => switchTab(1)}
+              active
+              icon={<CandleIcon active />}
+              onPress={() => undefined}
             />
             <View style={styles.tabsSpace} />
-            <Pressable onPress={handleEditToggle} style={styles.editButton}>
-              {editMode ? (
-                <View style={styles.editDoneBadge}>
-                  <Text style={styles.editDoneText}>完成</Text>
-                </View>
-              ) : (
-                <Text style={styles.editText}>编辑</Text>
-              )}
-            </Pressable>
+            {cards.length > 0 ? (
+              <Pressable onPress={handleEditToggle} style={styles.editButton}>
+                {editMode ? (
+                  <View style={styles.editDoneBadge}>
+                    <Text style={styles.editDoneText}>完成</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.editText}>编辑</Text>
+                )}
+              </Pressable>
+            ) : null}
           </View>
         </View>
       ) : null}
@@ -634,30 +537,242 @@ function Tab({
   );
 }
 
-function StatItem({label, value}: {label: string; value: string | number}) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function StatViewButton({onPress}: {onPress: () => void}) {
   return (
-    <View style={styles.statItem}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+    <Pressable onPress={onPress} hitSlop={6} style={styles.statViewButton}>
+      <Text style={styles.statViewText}>查看</Text>
+      <Svg width={10} height={10} viewBox="0 0 10 10" fill="none">
+        <Path d="M3.75 2.25L6.25 5L3.75 7.75" stroke="#FFFFFF" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
+    </Pressable>
+  );
+}
+
+function TradingGuideSection({
+  offerCount,
+  inquiries,
+  tickerTranslateY,
+  onInquiryPress,
+  onOfferSearchPress,
+  onMerchantSearchPress,
+}: {
+  offerCount?: string | number | null;
+  inquiries: OfferFeedItem[];
+  tickerTranslateY: Animated.Value;
+  onInquiryPress: () => void;
+  onOfferSearchPress: () => void;
+  onMerchantSearchPress: () => void;
+}) {
+  const hasInquiry = inquiries.length > 0;
+
+  return (
+    <View style={styles.tradeGuideWrap}>
+      <View style={styles.tradeGuideGrid}>
+        <Pressable
+          onPress={onInquiryPress}
+          style={({pressed}) => [styles.tradeInquiryCard, pressed && styles.tradeCardPressed]}>
+            <View style={styles.tradeHeadingRow}>
+              <View style={styles.tradeIconBubble}>
+              <ClipboardListIcon size={18} />
+            </View>
+            <View style={styles.tradeTitleRow}>
+              <Text style={styles.tradeMainTitle} numberOfLines={1}>求购专区</Text>
+              <SmallChevronIcon color={colors.text} />
+            </View>
+          </View>
+          <Text style={styles.tradeSubtitle}>看看今日市场需求</Text>
+
+          <View style={styles.inquiryTickerClip}>
+            {hasInquiry ? (
+              <Animated.View style={[styles.inquiryTickerTrack, {transform: [{translateY: tickerTranslateY}]}]}>
+                {inquiries.map((item, index) => (
+                  <HomeInquiryTickerRow
+                    key={`${item.offerId ?? 'inquiry'}-${index}`}
+                    item={item}
+                    showDivider={index < inquiries.length - 1}
+                  />
+                ))}
+              </Animated.View>
+            ) : (
+              <View style={styles.inquiryTickerEmpty}>
+                <Text style={styles.inquiryTickerEmptyText}>暂无求购动态</Text>
+              </View>
+            )}
+          </View>
+        </Pressable>
+
+        <View style={styles.tradeSideColumn}>
+          <Pressable
+            onPress={onOfferSearchPress}
+            style={({pressed}) => [styles.tradeSideCard, pressed && styles.tradeCardPressed]}>
+            <View style={styles.tradeSideHeadingRow}>
+              <View style={styles.tradeIconBubbleSmall}>
+                <OfferSearchIcon size={15} />
+              </View>
+              <View style={styles.tradeSideTitleRow}>
+                <Text
+                  style={styles.tradeSideTitle}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                  maxFontSizeMultiplier={1}>
+                  搜报盘
+                </Text>
+                <SmallChevronIcon color={colors.text} />
+              </View>
+            </View>
+            <Text style={styles.tradeSideSubtitle}>按产品/厂号/集团搜索</Text>
+            <Text style={styles.tradeSideStat}>
+              近两日报盘 <Text style={styles.tradeSideStatValue}>{formatHomeCount(offerCount)}</Text>
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={onMerchantSearchPress}
+            style={({pressed}) => [styles.tradeSideCard, pressed && styles.tradeCardPressed]}>
+            <View style={styles.tradeSideHeadingRow}>
+              <View style={styles.tradeIconBubbleSmall}>
+                <MerchantSearchIcon size={15} />
+              </View>
+              <View style={styles.tradeSideTitleRow}>
+                <Text
+                  style={styles.tradeSideTitle}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.85}
+                  maxFontSizeMultiplier={1}>
+                  搜商家
+                </Text>
+                <SmallChevronIcon color={colors.text} />
+              </View>
+            </View>
+            <Text style={styles.tradeSideSubtitle}>查商家 看报盘求购</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
+}
+
+function FollowUpSection({
+  intentCount,
+  recentCount,
+  onIntentPress,
+  onRecentPress,
+}: {
+  intentCount: number;
+  recentCount: number;
+  onIntentPress: () => void;
+  onRecentPress: () => void;
+}) {
+  return (
+    <View style={styles.followWrap}>
+      <View style={styles.followHeader}>
+        <Text style={styles.followTitle}>我的跟进</Text>
+      </View>
+      <View style={styles.followGrid}>
+        <FollowEntryCard
+          title="意向盘"
+          count={intentCount}
+          subtitle="暂存感兴趣的盘"
+          icon={<IntentBookmarkIcon />}
+          onPress={onIntentPress}
+        />
+        <FollowEntryCard
+          title="最近沟通"
+          count={recentCount}
+          subtitle="找回联系过的盘"
+          icon={<RecentChatIcon />}
+          onPress={onRecentPress}
+        />
+      </View>
+    </View>
+  );
+}
+
+function FollowEntryCard({
+  title,
+  count,
+  subtitle,
+  icon,
+  onPress,
+}: {
+  title: string;
+  count: number;
+  subtitle: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} style={({pressed}) => [styles.followCard, pressed && styles.tradeCardPressed]}>
+      <View style={styles.followCardTop}>
+        <View style={styles.followIconBubble}>{icon}</View>
+        <View style={styles.followCountBadge}>
+          <Text style={styles.followCountText}>{count}</Text>
+        </View>
+      </View>
+      <Text style={styles.followCardTitle}>{title}</Text>
+      <Text style={styles.followCardSubtitle} numberOfLines={1}>{subtitle}</Text>
+    </Pressable>
+  );
+}
+
+function HomeInquiryTickerRow({
+  item,
+  showDivider,
+}: {
+  item: OfferFeedItem;
+  showDivider: boolean;
+}) {
+  return (
+    <View style={[styles.inquiryTickerRow, showDivider && styles.inquiryTickerDivider]}>
+      <View style={styles.homeInquiryBadge}>
+        <Text style={styles.homeInquiryBadgeText}>求</Text>
+      </View>
+      <Text style={styles.inquiryTickerTitle} numberOfLines={1}>
+        {buildHomeInquiryTitle(item)}
+      </Text>
+      <SmallChevronIcon color="#9DA4A3" />
+    </View>
+  );
+}
+
+function buildHomeInquiryTitle(item: OfferFeedItem) {
+  const productName = cleanText(item.productName) || '求购';
+  const country = cleanText(item.country);
+  const factoryNo = cleanText(item.factoryNo);
+  let scope = '国家厂号不限';
+
+  if (country && factoryNo) {
+    scope = `${country}${factoryNo}`;
+  } else if (country) {
+    scope = `${country}厂号不限`;
+  } else if (factoryNo) {
+    scope = factoryNo;
+  }
+
+  return `${productName} ${scope}`;
+}
+
+function cleanText(value?: string | null) {
+  return value?.trim() ?? '';
+}
+
+function formatHomeCount(value?: string | number | null) {
+  if (value == null || value === '') return '--';
+  return String(value);
 }
 
 function CardWithEdit({
   card,
   editMode,
-  tab,
   onPress,
-  onLongPress,
-  onArchiveAdd,
   onArchiveDelete,
 }: {
   card: HomeCardItem;
   editMode: boolean;
-  tab: 0 | 1;
   onPress: () => void;
-  onLongPress?: () => void;
-  onArchiveAdd: () => void;
   onArchiveDelete: () => void;
 }) {
   return (
@@ -665,45 +780,139 @@ function CardWithEdit({
       <HomeCardSwitcher
         card={card}
         onPress={editMode ? undefined : onPress}
-        onLongPress={editMode && tab === 0 ? onLongPress : undefined}
       />
       {card.isExample && !editMode ? (
         <View style={styles.exampleBadge}>
           <Text style={styles.exampleBadgeText}>例</Text>
         </View>
       ) : null}
-      {editMode && (card.historyId || (tab === 1 && card.isExample)) ? (
-        <>
-          {tab === 1 ? (
-            // 历史搜索：右上角添加 + 下方删除，垂直排列
-            <View style={styles.editIconColumn}>
-              <Pressable hitSlop={4} onPress={onArchiveAdd} style={styles.editIconAdd}>
-                <SvgXml xml={archiveAddIconXml} width={16} height={16} />
-              </Pressable>
-              <Pressable hitSlop={4} onPress={onArchiveDelete} style={styles.editIconDel}>
-                <SvgXml xml={archiveDelIconXml} width={16} height={16} />
-              </Pressable>
-            </View>
-          ) : (
-            // 自选：仅右上角删除
-            <Pressable hitSlop={4} onPress={onArchiveDelete} style={styles.editIconSingle}>
-              <SvgXml xml={archiveDelIconXml} width={16} height={16} />
-            </Pressable>
-          )}
-        </>
+      {editMode && card.historyId ? (
+        <Pressable hitSlop={4} onPress={onArchiveDelete} style={styles.editIconSingle}>
+          <SvgXml xml={archiveDelIconXml} width={16} height={16} />
+        </Pressable>
       ) : null}
+    </View>
+  );
+}
+
+function splitColumns(cards: HomeCardItem[]) {
+  const leftColumn: HomeCardItem[] = [];
+  const rightColumn: HomeCardItem[] = [];
+  cards.forEach((card, index) => {
+    if (index % 2 === 0) leftColumn.push(card);
+    else rightColumn.push(card);
+  });
+  return {leftColumn, rightColumn};
+}
+
+function EmptySelfSelectState({onAdd}: {onAdd: () => void}) {
+  return (
+    <View style={styles.emptySelfWrap}>
+      <Pressable onPress={onAdd} hitSlop={8} style={styles.emptySelfButton}>
+        <View style={styles.emptySelfSquare}>
+          <Svg width={42} height={42} viewBox="0 0 42 42" fill="none">
+            <Path d="M21 10.5V31.5" stroke={colors.primary} strokeWidth={2} strokeLinecap="round" />
+            <Path d="M10.5 21H31.5" stroke={colors.primary} strokeWidth={2} strokeLinecap="round" />
+          </Svg>
+        </View>
+        <Text style={styles.emptySelfText}>暂无数据 搜索后添加</Text>
+      </Pressable>
     </View>
   );
 }
 
 /* ===== Inline icons ===== */
 
-function DragHandleIcon() {
+function ClipboardListIcon({size = 24}: {size?: number}) {
   return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Path d="M4 5H12" stroke="#9DA4A3" strokeWidth={1.5} strokeLinecap="round" />
-      <Path d="M4 8H12" stroke="#9DA4A3" strokeWidth={1.5} strokeLinecap="round" />
-      <Path d="M4 11H12" stroke="#9DA4A3" strokeWidth={1.5} strokeLinecap="round" />
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M8.75 5.25H7.6C6.72 5.25 6 5.97 6 6.85V18.4C6 19.28 6.72 20 7.6 20H16.4C17.28 20 18 19.28 18 18.4V6.85C18 5.97 17.28 5.25 16.4 5.25H15.25"
+        stroke="#006A61"
+        strokeWidth={1.55}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path
+        d="M9 5.6C9 4.72 9.72 4 10.6 4H13.4C14.28 4 15 4.72 15 5.6V6.6H9V5.6Z"
+        stroke="#006A61"
+        strokeWidth={1.55}
+        strokeLinejoin="round"
+      />
+      <Path d="M9 11H15M9 14H14M9 17H12.8" stroke="#006A61" strokeWidth={1.55} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function OfferSearchIcon({size = 24}: {size?: number}) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M7 4.5H14.4L18 8.1V19.5H7V4.5Z"
+        stroke="#006A61"
+        strokeWidth={1.55}
+        strokeLinejoin="round"
+      />
+      <Path d="M14.2 4.8V8.3H17.7" stroke="#006A61" strokeWidth={1.55} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M9.5 15.5L11.5 13.3L13.2 14.8L15.8 11.6" stroke="#006A61" strokeWidth={1.55} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M15 11.6H15.8V12.4" stroke="#006A61" strokeWidth={1.55} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+function MerchantSearchIcon({size = 24}: {size?: number}) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M5.5 10.2H18.5L17.7 19.5H6.3L5.5 10.2Z"
+        stroke="#006A61"
+        strokeWidth={1.55}
+        strokeLinejoin="round"
+      />
+      <Path d="M7.1 10.2L8 5H16L16.9 10.2" stroke="#006A61" strokeWidth={1.55} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M9 19.4V15.2H12.8V19.4" stroke="#006A61" strokeWidth={1.55} strokeLinejoin="round" />
+      <Path d="M14.8 15.1C15.96 15.1 16.9 14.16 16.9 13C16.9 11.84 15.96 10.9 14.8 10.9C13.64 10.9 12.7 11.84 12.7 13C12.7 14.16 13.64 15.1 14.8 15.1Z" fill="#006A61" fillOpacity={0.16} />
+      <Path d="M16.35 14.55L18.1 16.3" stroke="#006A61" strokeWidth={1.55} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function IntentBookmarkIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+      <Path
+        d="M6.15 2.5H13.85C15.05 2.5 16 3.48 16 4.68V16.18C16 16.92 15.2 17.4 14.55 17.05L10.45 14.83C10.17 14.68 9.83 14.68 9.55 14.83L5.45 17.05C4.8 17.4 4 16.92 4 16.18V4.68C4 3.48 4.95 2.5 6.15 2.5Z"
+        fill="#006A61"
+        fillOpacity={0.12}
+        stroke="#006A61"
+        strokeWidth={1.45}
+        strokeLinejoin="round"
+      />
+      <Path d="M10 6.1V10.9M7.6 8.5H12.4" stroke="#006A61" strokeWidth={1.45} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function RecentChatIcon() {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 20 20" fill="none">
+      <Path
+        d="M3.2 9.15C3.2 5.85 6.08 3.25 10 3.25C13.92 3.25 16.8 5.85 16.8 9.15C16.8 12.45 13.92 15.05 10 15.05C9.28 15.05 8.58 14.96 7.94 14.79L4.58 16.4C4.14 16.61 3.7 16.17 3.9 15.73L5.04 13.18C3.9 12.13 3.2 10.73 3.2 9.15Z"
+        fill="#006A61"
+        fillOpacity={0.12}
+        stroke="#006A61"
+        strokeWidth={1.45}
+        strokeLinejoin="round"
+      />
+      <Path d="M7.25 9.1H7.3M9.95 9.1H10M12.65 9.1H12.7" stroke="#006A61" strokeWidth={2.1} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+function SmallChevronIcon({color = colors.primary}: {color?: string}) {
+  return (
+    <Svg width={14} height={14} viewBox="0 0 14 14" fill="none">
+      <Path d="M5.25 3.5L8.75 7L5.25 10.5" stroke={color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
@@ -780,16 +989,6 @@ function CandleIcon({active}: {active: boolean}) {
       <Path d="M11.6667 6.00004V1.33337" stroke={color} strokeMiterlimit={10} strokeLinecap="round" strokeLinejoin="round"/>
       <Path d="M6.33325 4.66671V8.66671C6.33325 9.40004 5.99992 10 4.99992 10H3.66659C2.66659 10 2.33325 9.40004 2.33325 8.66671V4.66671C2.33325 3.93337 2.66659 3.33337 3.66659 3.33337H4.99992C5.99992 3.33337 6.33325 3.93337 6.33325 4.66671Z" stroke={color} strokeMiterlimit={10} strokeLinecap="round" strokeLinejoin="round"/>
       <Path d="M13.6667 7.33333V11.3333C13.6667 12.0667 13.3334 12.6667 12.3334 12.6667H11.0001C10.0001 12.6667 9.66675 12.0667 9.66675 11.3333V7.33333C9.66675 6.6 10.0001 6 11.0001 6H12.3334C13.3334 6 13.6667 6.6 13.6667 7.33333Z" stroke={color} strokeMiterlimit={10} strokeLinecap="round" strokeLinejoin="round"/>
-    </Svg>
-  );
-}
-
-function ClockIcon({active}: {active: boolean}) {
-  const color = active ? colors.primary : '#3C4947';
-  return (
-    <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
-      <Circle cx={8} cy={8} r={6} stroke={color} strokeWidth={1.5} />
-      <Path d="M8 5v3l2 1" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
@@ -903,11 +1102,272 @@ const styles = StyleSheet.create({
   hotChipText: {color: colors.text, fontSize: 12, fontWeight: '500', lineHeight: 16},
   hotEmpty: {color: '#9DA4A3', fontSize: 11, paddingHorizontal: 8},
 
+  tradeGuideWrap: {
+    backgroundColor: '#F4FBF8',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6,
+  },
+  tradeGuideGrid: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 8,
+  },
+  tradeInquiryCard: {
+      flex: 1.38,
+      minWidth: 0,
+      minHeight: 154,
+      paddingHorizontal: 12,
+      paddingTop: 10,
+      paddingBottom: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#CFE2DF',
+    backgroundColor: '#F8FFFD',
+    shadowColor: 'rgba(0, 40, 36, 0.08)',
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    shadowOffset: {width: 0, height: 3},
+    elevation: 1,
+  },
+    tradeSideColumn: {
+      flex: 0.76,
+      minWidth: 0,
+      gap: 6,
+    },
+  tradeSideCard: {
+      flex: 1,
+      minHeight: 73,
+      paddingHorizontal: 9,
+      paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#D7E1DF',
+    backgroundColor: '#FFFFFF',
+    shadowColor: 'rgba(0, 40, 36, 0.06)',
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    shadowOffset: {width: 0, height: 2},
+    elevation: 1,
+  },
+  tradeCardPressed: {
+    opacity: 0.72,
+  },
+  tradeIconBubble: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E2F4F0',
+  },
+  tradeIconBubbleSmall: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EAF7F4',
+  },
+  tradeHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  tradeTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  tradeMainTitle: {
+    flexShrink: 1,
+    color: colors.text,
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: '700',
+  },
+  tradeSubtitle: {
+    marginTop: 5,
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  inquiryTickerClip: {
+      height: HOME_INQUIRY_ROW_HEIGHT * HOME_INQUIRY_VISIBLE_COUNT,
+      marginTop: 6,
+      borderRadius: 7,
+      backgroundColor: '#FFFFFF',
+      overflow: 'hidden',
+  },
+  inquiryTickerTrack: {
+    minHeight: HOME_INQUIRY_ROW_HEIGHT * (HOME_INQUIRY_VISIBLE_COUNT + 1),
+  },
+  inquiryTickerRow: {
+    height: HOME_INQUIRY_ROW_HEIGHT,
+    paddingHorizontal: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  inquiryTickerDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E2E9E7',
+  },
+  homeInquiryBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#C8D8FF',
+    backgroundColor: '#EEF4FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  homeInquiryBadgeText: {
+    color: '#3767D6',
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: '700',
+  },
+  inquiryTickerTitle: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '600',
+  },
+  inquiryTickerEmpty: {
+    height: HOME_INQUIRY_ROW_HEIGHT * HOME_INQUIRY_VISIBLE_COUNT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inquiryTickerEmptyText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  tradeSideHeadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  tradeSideTitleRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  tradeSideTitle: {
+    flex: 1,
+    flexShrink: 1,
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
+  },
+    tradeSideSubtitle: {
+      marginTop: 2,
+      color: colors.textMuted,
+      fontSize: 10,
+      lineHeight: 15,
+    },
+  tradeSideStat: {
+      marginTop: 3,
+      color: colors.textMuted,
+      fontSize: 10,
+      lineHeight: 15,
+  },
+  tradeSideStatValue: {
+    fontFamily: fonts.manropeBold,
+    color: colors.primary,
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  followWrap: {
+    marginHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 6,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#DDEAE7',
+    backgroundColor: '#F8FFFD',
+  },
+  followHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  followTitle: {
+    color: colors.text,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  followGrid: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  followCard: {
+    flex: 1,
+    minHeight: 72,
+    padding: 10,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: '#E2ECE9',
+    backgroundColor: '#FFFFFF',
+  },
+  followCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  followIconBubble: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E8F5F3',
+  },
+  followCountBadge: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    backgroundColor: '#E8F5F3',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followCountText: {
+    color: colors.primary,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+  },
+  followCardTitle: {
+    marginTop: 8,
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  followCardSubtitle: {
+    marginTop: 3,
+    color: colors.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+
   // sticky stat + tabs
   stickyBlock: {
     backgroundColor: '#F4FBF8',
     zIndex: 50,
-    elevation: 10,
+    elevation: 0,
   },
   stickyOverlay: {
     position: 'absolute',
@@ -915,18 +1375,20 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: '#F4FBF8',
     zIndex: 90,
-    elevation: 15,
+    elevation: 0,
   },
   statBar: {
-    height: 34,
+    height: 38,
     backgroundColor: '#3B5C59',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingLeft: 16,
+    paddingRight: 12,
+    paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  statBarLeft: {flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1},
+  statBarLeft: {flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0},
+  statBarRight: {flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 0},
   statBadge: {
     paddingHorizontal: 4,
     borderRadius: 2,
@@ -939,10 +1401,24 @@ const styles = StyleSheet.create({
   statLabel: {color: '#FFFFFF', fontSize: 11, lineHeight: 18},
   statValue: {fontFamily: fonts.manropeBold, color: '#FFFFFF', fontSize: 12, lineHeight: 16},
   statTime: {color: 'rgba(255,255,255,0.6)', fontSize: 11, lineHeight: 18},
+  statViewButton: {
+    height: 24,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.35)',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+  },
+  statViewText: {color: '#FFFFFF', fontSize: 11, lineHeight: 14, fontWeight: '600'},
 
   tabsBar: {
-    height: 42,
+    height: 40,
     paddingHorizontal: 16,
+    paddingTop: 2,
     backgroundColor: '#F4FBF8',
     flexDirection: 'row',
     alignItems: 'center',
@@ -962,8 +1438,24 @@ const styles = StyleSheet.create({
 
   content: {paddingBottom: 32},
   cardsLoading: {marginTop: 32},
-  empty: {marginTop: 48, textAlign: 'center', color: '#9DA4A3', fontSize: 14},
-  gridRow: {flexDirection: 'row', paddingHorizontal: 16, paddingTop: 12, gap: 12},
+  emptySelfWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+    paddingBottom: 140,
+  },
+  emptySelfButton: {alignItems: 'center', justifyContent: 'center'},
+  emptySelfSquare: {
+    width: 86,
+    height: 86,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  emptySelfText: {marginTop: 10, color: '#6C7A77', fontSize: 12, lineHeight: 16},
+  gridRow: {flexDirection: 'row', paddingHorizontal: 16, paddingTop: 10, gap: 12},
   gridCol: {flex: 1, gap: 12},
   cardWrap: {position: 'relative'},
   exampleBadge: {

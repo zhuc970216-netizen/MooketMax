@@ -5,6 +5,7 @@ import {fonts} from '../../../theme/typography';
 import type {HomeCardItem} from '../../../types/api';
 import {asText} from '../../../utils/format';
 import {getCountryFlag} from '../../../utils/country';
+import {normalizeFactoryNo} from '../../../utils/factoryNo';
 import {cardBaseStyle, formatThousand, rankPalette, sharedStyles} from './shared';
 
 type Props = {card: HomeCardItem; onPress?: () => void; onLongPress?: () => void};
@@ -15,6 +16,8 @@ type Props = {card: HomeCardItem; onPress?: () => void; onLongPress?: () => void
 export function FactoryCard({card, onPress, onLongPress}: Props) {
   const flag = getCountryFlag(card.country);
   const products = (card.hotProducts ?? []).slice(0, 3) as Array<Record<string, unknown>>;
+  const factoryNo = normalizeFactoryNo(card.factoryNo);
+  const title = `${card.countryAlias ?? card.country ?? '--'}${factoryNo}`;
 
   return (
     <Pressable
@@ -26,7 +29,7 @@ export function FactoryCard({card, onPress, onLongPress}: Props) {
       <View style={styles.titleWrap}>
         {flag ? <Text style={styles.flag}>{flag}</Text> : null}
         <Text style={styles.titleText} numberOfLines={1}>
-          {`${card.countryAlias ?? card.country ?? '--'} ${card.factoryNo ?? ''}`}
+          {title}
         </Text>
       </View>
 
@@ -58,7 +61,7 @@ export function FactoryCard({card, onPress, onLongPress}: Props) {
       <View style={sharedStyles.divider} />
 
       <View style={styles.bottomRow}>
-        <Text style={sharedStyles.smallLabel}>今日报盘数</Text>
+        <Text style={sharedStyles.smallLabel}>近2日报盘数</Text>
         <Text style={sharedStyles.midStat}>{formatThousand(card.todayOfferCount)}</Text>
       </View>
     </Pressable>

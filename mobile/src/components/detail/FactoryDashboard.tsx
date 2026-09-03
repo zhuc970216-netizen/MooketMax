@@ -4,6 +4,7 @@ import {colors} from '../../theme/colors';
 import {fonts} from '../../theme/typography';
 import {getCountryFlag} from '../../utils/country';
 import {formatCount} from '../../utils/format';
+import {FeedStatLink} from './FeedStatLink';
 
 type Props = {
   country: string;
@@ -12,6 +13,9 @@ type Props = {
   productCount?: number | null;
   inquiryCount?: number | null;
   recentOfferCount?: number | null;
+  secondaryCountLabel?: string;
+  secondaryCount?: number | null;
+  onFeedPress?: () => void;
 };
 
 /**
@@ -26,9 +30,14 @@ export function FactoryDashboard({
   productCount,
   inquiryCount,
   recentOfferCount,
+  secondaryCountLabel,
+  secondaryCount,
+  onFeedPress,
 }: Props) {
   const flag = getCountryFlag(country);
   const bigValue = isInquiry ? inquiryCount ?? 0 : recentOfferCount ?? 0;
+  const secondaryLabel = secondaryCountLabel ?? (isInquiry ? '求购数' : '报盘数');
+  const secondaryValue = secondaryCount ?? (isInquiry ? inquiryCount : recentOfferCount);
 
   return (
     <View style={styles.container}>
@@ -42,14 +51,18 @@ export function FactoryDashboard({
           </View>
           <View style={styles.statsRow}>
             <Stat label="产品数" value={productCount} />
-            <Stat label="求购数" value={inquiryCount} />
+            <Stat label={secondaryLabel} value={secondaryValue} />
           </View>
         </View>
 
-        <View style={styles.right}>
-          <Text style={styles.smallLabel}>{isInquiry ? '近2日求购' : '近2日报盘'}</Text>
-          <Text style={styles.bigValue}>{formatCount(bigValue)}</Text>
-        </View>
+        <FeedStatLink
+          label={isInquiry ? '近2日求购' : '近2日报盘'}
+          value={formatCount(bigValue)}
+          layout="large"
+          align="end"
+          onPress={onFeedPress}
+          style={styles.right}
+        />
       </View>
     </View>
   );

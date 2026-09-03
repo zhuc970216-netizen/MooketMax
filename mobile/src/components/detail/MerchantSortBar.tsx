@@ -1,13 +1,12 @@
 import React from 'react';
 import {
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
-import {SvgXml} from 'react-native-svg';
 import {colors} from '../../theme/colors';
-import {sortArrowsAsc, sortArrowsDefault, sortArrowsDesc} from './productIcons';
 import type {OfferTab, SortOrder} from './TabAndSortBar';
 
 export type MerchantSortKey = 'comprehensive' | 'publish_time' | 'price';
@@ -22,6 +21,9 @@ type Props = {
   sort: MerchantSortMode;
   onSortChange: (next: MerchantSortMode) => void;
   hideInquiry?: boolean;
+  showTabs?: boolean;
+  offerLabel?: string;
+  inquiryLabel?: string;
 };
 
 export function MerchantSortBar({
@@ -30,35 +32,28 @@ export function MerchantSortBar({
   sort,
   onSortChange,
   hideInquiry = false,
+  showTabs = true,
+  offerLabel = '报盘',
+  inquiryLabel = '求购',
 }: Props) {
   const priceOrder = sort.kind === 'price' ? sort.order : 'none';
-
-  function togglePrice() {
-    if (sort.kind !== 'price') {
-      onSortChange({kind: 'price', order: 'asc'});
-      return;
-    }
-    const next: SortOrder =
-      sort.order === 'asc' ? 'desc' : sort.order === 'desc' ? 'none' : 'asc';
-    onSortChange(next === 'none' ? {kind: 'comprehensive'} : {kind: 'price', order: next});
-  }
-
-  const arrowsXml =
-    priceOrder === 'asc'
-      ? sortArrowsAsc()
-      : priceOrder === 'desc'
-        ? sortArrowsDesc()
-        : sortArrowsDefault();
+  const nextPriceOrder: SortOrder = priceOrder === 'asc' ? 'desc' : 'asc';
 
   return (
     <View style={styles.bar}>
-      <View style={styles.left}>
-        <TabItem text="报盘" active={tab === 'offer'} onPress={() => onTabChange('offer')} />
-        {!hideInquiry ? (
-          <TabItem text="求购" active={tab === 'inquiry'} onPress={() => onTabChange('inquiry')} />
-        ) : null}
-      </View>
-      <View style={styles.right}>
+      {showTabs ? (
+        <View style={styles.left}>
+          <TabItem text={offerLabel} active={tab === 'offer'} onPress={() => onTabChange('offer')} />
+          {!hideInquiry ? (
+            <TabItem text={inquiryLabel} active={tab === 'inquiry'} onPress={() => onTabChange('inquiry')} />
+          ) : null}
+        </View>
+      ) : null}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={[styles.sortScroll, !showTabs && styles.sortScrollOnly]}
+        contentContainerStyle={[styles.sortContent, showTabs && styles.sortContentRight]}>
         <Pressable onPress={() => onSortChange({kind: 'comprehensive'})}>
           <Text style={[styles.sortText, sort.kind === 'comprehensive' && styles.sortTextActive]}>
             综合推荐
@@ -69,19 +64,16 @@ export function MerchantSortBar({
             发布时间
           </Text>
         </Pressable>
-        <Pressable onPress={togglePrice} style={styles.priceWrap}>
+        <Pressable onPress={() => onSortChange({kind: 'price', order: nextPriceOrder})}>
           <Text
             style={[
               styles.sortText,
-              sort.kind === 'price' && priceOrder !== 'none' && styles.sortTextActive,
+              sort.kind === 'price' && styles.sortTextActive,
             ]}>
-            价格
+            {priceOrder === 'desc' ? '价格降序↓' : '价格升序↑'}
           </Text>
-          <View style={styles.iconWrap}>
-            <SvgXml xml={arrowsXml} width={6} height={12} />
-          </View>
         </Pressable>
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -99,7 +91,7 @@ const styles = StyleSheet.create({
   bar: {
     minHeight: 40,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
     paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
@@ -108,7 +100,20 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   left: {flexDirection: 'row', alignItems: 'center', gap: 28},
-  right: {flexDirection: 'row', alignItems: 'center', gap: 28},
+  sortScroll: {flex: 1, marginLeft: 10, flexShrink: 1},
+  sortScrollOnly: {marginLeft: 0},
+  sortContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 32,
+    paddingHorizontal: 0,
+  },
+  sortContentRight: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+    gap: 24,
+  },
   tabItem: {alignItems: 'center', gap: 2},
   tabText: {color: '#3C4947', fontSize: 14, lineHeight: 20, textAlign: 'center'},
   tabTextActive: {color: colors.text, fontWeight: '600'},
@@ -116,6 +121,4 @@ const styles = StyleSheet.create({
   indicatorActive: {backgroundColor: colors.primary},
   sortText: {color: '#3C4947', fontSize: 14, lineHeight: 20, textAlign: 'center'},
   sortTextActive: {color: colors.text, fontWeight: '600'},
-  priceWrap: {flexDirection: 'row', alignItems: 'center', gap: 3},
-  iconWrap: {width: 12, height: 12, alignItems: 'center', justifyContent: 'center'},
 });

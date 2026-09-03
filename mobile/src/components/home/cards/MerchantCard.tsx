@@ -45,7 +45,9 @@ export function MerchantCard({card, onPress, onLongPress}: Props) {
                     const price = formatLatestOfferPrice(offer.price);
                     return (
                       <>
-                        <Text style={styles.priceValue}>{price.text}</Text>
+                        <Text style={[styles.priceValue, !price.unit && styles.negotiateValue]}>
+                          {price.text}
+                        </Text>
                         {price.unit ? <Text style={styles.priceUnit}>{price.unit}</Text> : null}
                       </>
                     );
@@ -66,7 +68,7 @@ export function MerchantCard({card, onPress, onLongPress}: Props) {
       <View style={sharedStyles.divider} />
 
       <View style={styles.footerRow}>
-        <Text style={sharedStyles.smallLabel}>今日报盘数</Text>
+        <Text style={sharedStyles.smallLabel}>近2日报盘数</Text>
         <Text style={styles.footerValue}>{formatThousand(card.todayOfferCount)}</Text>
       </View>
     </Pressable>
@@ -107,33 +109,34 @@ function formatWeightUnit(value: unknown): string {
 }
 
 const styles = StyleSheet.create({
-  card: {...cardBaseStyle, gap: 8},
+  card: {...cardBaseStyle, gap: 6, paddingVertical: 7},
   pressed: {opacity: 0.85},
   titleWrap: {flexDirection: 'row', alignItems: 'flex-start', gap: 6},
   titleText: {
     color: colors.text,
     fontSize: 16,
-    lineHeight: 22,
+    lineHeight: 20,
     fontWeight: '500',
     flex: 1,
     flexShrink: 1,
   },
-  body: {gap: 4},
+  body: {gap: 3},
   bodyDivider: {
     height: 0.5,
     backgroundColor: 'rgba(0,0,0,0.08)',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   offerBlock: {gap: 0},
-  offerTitle: {color: colors.text, fontSize: 11, lineHeight: 18},
+  offerTitle: {color: colors.text, fontSize: 11, lineHeight: 16},
   offerInfo: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
   priceLine: {flexDirection: 'row', alignItems: 'baseline'},
-  priceValue: {fontFamily: fonts.manropeBold, color: colors.price, fontSize: 12, lineHeight: 20},
-  priceUnit: {fontFamily: fonts.manropeRegular, color: colors.text, fontSize: 10, lineHeight: 20},
+  priceValue: {fontFamily: fonts.manropeBold, color: colors.price, fontSize: 12, lineHeight: 18},
+  negotiateValue: {color: colors.primary},
+  priceUnit: {fontFamily: fonts.manropeRegular, color: colors.text, fontSize: 10, lineHeight: 18},
   weightLine: {flexDirection: 'row', alignItems: 'baseline'},
-  weightValue: {fontFamily: fonts.manropeBold, color: colors.text, fontSize: 12, lineHeight: 20},
-  weightUnit: {color: colors.textSecondary, fontSize: 9, lineHeight: 20, marginLeft: 1},
+  weightValue: {fontFamily: fonts.manropeBold, color: colors.text, fontSize: 12, lineHeight: 18},
+  weightUnit: {color: colors.textSecondary, fontSize: 9, lineHeight: 18, marginLeft: 1},
   empty: {color: '#9DA4A3', fontSize: 11, paddingVertical: 4},
-  footerRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8},
-  footerValue: {fontFamily: fonts.manropeSemiBold, color: colors.text, fontSize: 16, lineHeight: 20},
+  footerRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 4},
+  footerValue: {fontFamily: fonts.manropeSemiBold, color: colors.text, fontSize: 14, lineHeight: 18},
 });

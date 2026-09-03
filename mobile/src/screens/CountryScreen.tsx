@@ -6,21 +6,22 @@ import {CountryDashboard} from '../components/detail/CountryDashboard';
 import {DetailTopBar} from '../components/detail/DetailTopBar';
 import {SelfSelectButton} from '../components/detail/SelfSelectButton';
 import {CountrySummaryRowCard} from '../components/detail/CountrySummaryRowCard';
-import {TabAndSortBar, type OfferTab, type SortMode} from '../components/detail/TabAndSortBar';
+import {OfferInquiryTabs, TabAndSortBar, type OfferTab, type SortMode} from '../components/detail/TabAndSortBar';
 import {ErrorState} from '../components/common/ErrorState';
 import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
 import type {CountryDetail, CountryProductSummary} from '../types/api';
+import {getTabCount, getTabFactoryCount, getTabMerchantCount} from '../utils/tabStats';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Country'>;
 
 const pageSize = 20;
 
 export function CountryScreen({navigation, route}: Props) {
-  const {country, category, searchKeyword: routeSearchKeyword} = route.params;
+  const {country, category, searchKeyword: routeSearchKeyword, initialTab} = route.params;
   const searchKeyword = routeSearchKeyword ?? country;
   const [data, setData] = useState<CountryDetail | null>(null);
-  const [tab, setTab] = useState<OfferTab>('offer');
+  const [tab, setTab] = useState<OfferTab>(initialTab ?? 'offer');
   const [sort, setSort] = useState<SortMode>({kind: 'comprehensive'});
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -95,17 +96,38 @@ export function CountryScreen({navigation, route}: Props) {
         onBack={() => navigation.goBack()}
         onSearchPress={() => {
           navigation.popToTop();
-          navigation.navigate('Search', {category, keyword: searchKeyword});
+          navigation.navigate('Search', {category, keyword: searchKeyword, initialTab: tab});
         }}
         tags={[
           {
             text: country,
             onClose: () => {
               navigation.popToTop();
-              navigation.navigate('Search', {category, keyword: searchKeyword});
+              navigation.navigate('Search', {category, keyword: searchKeyword, initialTab: tab});
             },
           },
         ]}
+        topSlot={
+          <OfferInquiryTabs
+            tab={tab}
+            onTabChange={setTab}
+            showMerchant
+            onMerchantPress={() => {
+              navigation.replace('MerchantSearchResults', {
+                category,
+                searchKeyword,
+                tags: [country],
+                merchantSearch: {
+                  display: searchKeyword,
+                  matchType: 'country',
+                  type: '国家',
+                  country,
+                },
+                target: {screen: 'Country', country},
+              });
+            }}
+          />
+        }
         rightAction={
           <SelfSelectButton category={category} card={selfSelectCard} payload={selfSelectPayload} />
         }
@@ -130,19 +152,20 @@ export function CountryScreen({navigation, route}: Props) {
               <CountryDashboard
                 country={data.country || country}
                 isInquiry={tab === 'inquiry'}
-                factoryCount={data.factoryCount}
-                merchantCount={data.merchantCount}
-                offerCount={data.offerCount}
+                factoryCount={getTabFactoryCount(data, tab)}
+                merchantCount={getTabMerchantCount(data, tab)}
+                offerCount={getTabCount(data, tab)}
                 hotFactories={data.hotFactories}
                 hotProducts={data.hotProducts}
                 onFactoryClick={factoryNo =>
-                  navigation.navigate('Factory', {country: data.country || country, factoryNo, category})
+                  navigation.navigate('Factory', {country: data.country || country, factoryNo, category, initialTab: tab})
                 }
                 onProductClick={productName =>
                   navigation.navigate('CountryProduct', {
                     country: data.country || country,
                     productName,
                     category,
+                    initialTab: tab,
                   })
                 }
               />
@@ -151,7 +174,7 @@ export function CountryScreen({navigation, route}: Props) {
           }
           renderSectionHeader={() => (
             <View style={styles.stickyHeader}>
-              <TabAndSortBar tab={tab} onTabChange={setTab} sort={sort} onSortChange={setSort} />
+              <TabAndSortBar tab={tab} onTabChange={setTab} sort={sort} onSortChange={setSort} showTabs={false} />
             </View>
           )}
           renderItem={({item}) => (
@@ -159,7 +182,7 @@ export function CountryScreen({navigation, route}: Props) {
               title={item.productName}
               factoryNos={item.factoryNos}
               factoryCount={item.factoryCount}
-              count={item.offerCount}
+              count={getTabCount(item, tab)}
               countLabel={tab === 'offer' ? '报盘' : '求购'}
               priceMin={item.priceMin}
               priceMax={item.priceMax}
@@ -168,6 +191,7 @@ export function CountryScreen({navigation, route}: Props) {
                   country: data.country || country,
                   productName: item.productName,
                   category,
+                  initialTab: tab,
                 })
               }
             />
@@ -212,6 +236,7 @@ function mergeSummaries(prev: CountryProductSummary[], incoming: CountryProductS
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   loading: {paddingVertical: 48, alignItems: 'center'},
+  topTabs: {borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#EFF5F3', borderBottomWidth: 1, borderBottomColor: colors.border},
   gap: {height: 12, backgroundColor: '#F4FBF8'},
   footer: {alignItems: 'center', paddingVertical: 16},
   footerText: {color: '#9DA4A3', fontSize: 12},

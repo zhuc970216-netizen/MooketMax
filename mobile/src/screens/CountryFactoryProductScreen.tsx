@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
   SectionList,
   Pressable,
   RefreshControl,
@@ -19,24 +20,51 @@ import {FilterBar, type FilterKey} from '../components/detail/FilterBar';
 import {FilterPanelSheet, MultiSelectChips} from '../components/detail/FilterPanelSheet';
 import {MerchantOfferGroupCard} from '../components/detail/MerchantOfferGroupCard';
 import {OriginalTextSheet} from '../components/detail/OriginalTextSheet';
-import {TabAndSortBar, type OfferTab, type SortMode} from '../components/detail/TabAndSortBar';
+import {OfferInquiryTabs, type OfferTab, type SortMode} from '../components/detail/TabAndSortBar';
 import {ErrorState} from '../components/common/ErrorState';
 import type {RootStackParamList} from '../navigation/routes';
 import {colors} from '../theme/colors';
 import type {CountryFactoryProductDetail, MerchantOfferGroup} from '../types/api';
 import {extractCity, splitTags} from '../utils/offer';
 import type {OriginalTextPayload} from '../utils/originalText';
+import {loadMerchantSearchResults} from '../utils/merchantSearchResults';
+import {getTabCount, getTabMerchantCount} from '../utils/tabStats';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CountryFactoryProduct'>;
 
 const pageSize = 20;
+const unlinkedMerchantLabel = '暂未关联行业商家';
 type LocalFilterKey = Exclude<FilterKey, 'countryFactory' | 'product' | 'famousMerchant'>;
+type MerchantFilterOption = {key: string; label: string};
+
+const sortOptions: Array<{label: string; value: SortMode}> = [
+  {label: '综合排序', value: {kind: 'comprehensive'}},
+  {label: '发布时间', value: {kind: 'publishTime'}},
+  {label: '价格从低到高↑', value: {kind: 'price', order: 'asc'}},
+  {label: '价格从高到低↓', value: {kind: 'price', order: 'desc'}},
+];
+
+function buildCFLabel(country?: string | null, factoryNo?: string | null): string {
+  const c = country?.trim();
+  const f = factoryNo?.trim();
+  if (c && f) {
+    return `${c}${f}`;
+  }
+  if (c && !f) {
+    return `${c}厂号不限`;
+  }
+  if (!c && f) {
+    return `国家不限${f}`;
+  }
+  return '国家厂号不限';
+}
 
 export function CountryFactoryProductScreen({navigation, route}: Props) {
-  const {country, factoryNo, productName, category, searchKeyword: routeSearchKeyword} = route.params;
+  const {country, factoryNo, productName, category, searchKeyword: routeSearchKeyword, initialTab} = route.params;
   const searchKeyword = routeSearchKeyword ?? `${country}${factoryNo}${productName}`;
   const [data, setData] = useState<CountryFactoryProductDetail | null>(null);
-  const [tab, setTab] = useState<OfferTab>('offer');
+  const [hasSubstituteEntry, setHasSubstituteEntry] = useState<boolean | null>(null);
+  const [tab, setTab] = useState<OfferTab>(initialTab ?? 'offer');
   const [sort, setSort] = useState<SortMode>({kind: 'comprehensive'});
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -45,6 +73,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
   const [originalText, setOriginalText] = useState<OriginalTextPayload | null>(null);
   const handleViewOriginalText = useCallback((value: OriginalTextPayload) => setOriginalText(value), []);
   const [activeFilter, setActiveFilter] = useState<LocalFilterKey | null>(null);
+  const [filterPanelTop, setFilterPanelTop] = useState(0);
 
   const [famousMerchant, setFamousMerchant] = useState(false);
   const [merchants, setMerchants] = useState<Set<string>>(new Set());
@@ -62,6 +91,54 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
   const currentCountry = data?.country || country;
   const currentFactoryNo = data?.factoryNo || factoryNo;
   const currentProductName = data?.productName || productName;
+  const handleTabChange = useCallback(
+    (nextTab: OfferTab) => {
+      if (nextTab === tab) return;
+      setData(null);
+      setPage(1);
+      setError(null);
+      setTab(nextTab);
+    },
+    [tab],
+  );
+  const openMerchantHome = useCallback(
+    async (group: MerchantOfferGroup) => {
+      const directMerchantId = normalizeMerchantTargetId(group.merchantId);
+      if (directMerchantId) {
+        navigation.navigate('Merchant', {
+          merchantId: directMerchantId,
+          category,
+          initialTab: tab,
+          initialCategory: 'all',
+        });
+        return;
+      }
+
+      const merchantName = group.merchantName?.trim();
+      if (!merchantName || merchantName === unlinkedMerchantLabel) {
+        Alert.alert('发布用户未关联商家', '该分组中的发布用户尚未解析出所属行业商家，所以没有可跳转的商家主页。');
+        return;
+      }
+
+      try {
+        const resolvedMerchantId = await resolveMerchantIdByName(category, merchantName);
+        if (resolvedMerchantId) {
+          navigation.navigate('Merchant', {
+            merchantId: resolvedMerchantId,
+            category,
+            initialTab: tab,
+            initialCategory: 'all',
+          });
+          return;
+        }
+      } catch {
+        // Fall through to the explicit unlinked-state message below.
+      }
+
+      Alert.alert('暂未关联商家主页', '这个商家当前只有名称，尚未关联商家主页，暂时不能进入。');
+    },
+    [category, navigation, tab],
+  );
   const selfSelectCard = currentCountry && currentFactoryNo && currentProductName
     ? {
         cardType: 'factoryProduct',
@@ -106,6 +183,39 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
   useEffect(() => {
     loadFirst().catch(() => undefined);
   }, [loadFirst]);
+
+  useEffect(() => {
+    const lookupCountry = currentCountry?.trim();
+    const lookupFactoryNo = currentFactoryNo?.trim();
+    const lookupProductName = currentProductName?.trim();
+
+    if (!lookupCountry || !lookupFactoryNo || !lookupProductName) {
+      setHasSubstituteEntry(false);
+      return;
+    }
+
+    let cancelled = false;
+    setHasSubstituteEntry(data?.hasSubstitute ?? null);
+
+    mooketApi
+      .getSubstituteProducts(lookupCountry, lookupFactoryNo, lookupProductName, category)
+      .then(result => {
+        if (cancelled) {
+          return;
+        }
+        setHasSubstituteEntry((result.factories?.length ?? 0) > 0);
+      })
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+        setHasSubstituteEntry(data?.hasSubstitute ?? false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [category, currentCountry, currentFactoryNo, currentProductName, data?.hasSubstitute]);
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || !data) return;
@@ -209,7 +319,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
   );
 
   const fullMerchantOptions = useMemo(
-    () => data?.filterOptions?.merchants ?? allMerchants,
+    () => normalizeMerchantFilterOptions(data?.filterOptions?.merchants ?? allMerchants),
     [allMerchants, data?.filterOptions?.merchants],
   );
 
@@ -220,17 +330,72 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
   }, [fullMerchantOptions, merchantKeyword]);
 
   const filterDefs = [
+    {
+      key: 'sort' as const,
+      label: getSortLabel(sort),
+      hasSelection: sort.kind !== 'comprehensive',
+      onClear: sort.kind !== 'comprehensive' ? () => {
+        setSort({kind: 'comprehensive'});
+        setActiveFilter(null);
+      } : undefined,
+    },
     {key: 'famousMerchant' as const, label: '知名商家', hasSelection: famousMerchant, toggle: true},
-    {key: 'merchant' as const, label: '商家筛选', hasSelection: merchants.size > 0},
-    {key: 'region' as const, label: '地区', hasSelection: regions.size > 0},
+    {
+      key: 'merchant' as const,
+      label: getSelectedOptionFilterLabel(merchants, fullMerchantOptions, '商家筛选'),
+      hasSelection: merchants.size > 0,
+      onClear: merchants.size > 0 ? () => {
+        setMerchants(new Set());
+        setMerchantKeyword('');
+        setActiveFilter(null);
+      } : undefined,
+    },
+    {
+      key: 'region' as const,
+      label: getSelectedFilterLabel(regions, '地区'),
+      hasSelection: regions.size > 0,
+      onClear: regions.size > 0 ? () => {
+        setRegions(new Set());
+        setActiveFilter(null);
+      } : undefined,
+    },
     {
       key: 'priceRange' as const,
-      label: '价格区间',
+      label: getPriceRangeFilterLabel(priceMinInput, priceMaxInput),
       hasSelection: priceMinInput.trim().length > 0 || priceMaxInput.trim().length > 0,
+      onClear: priceMinInput.trim().length > 0 || priceMaxInput.trim().length > 0 ? () => {
+        setPriceMinInput('');
+        setPriceMaxInput('');
+        setActiveFilter(null);
+      } : undefined,
     },
-    {key: 'goodsType' as const, label: '货物类型', hasSelection: goodsTypes.size > 0},
-    {key: 'feedingMethod' as const, label: '饲养方式', hasSelection: feedingMethods.size > 0},
-    {key: 'tag' as const, label: '标签', hasSelection: tags.size > 0},
+    {
+      key: 'goodsType' as const,
+      label: getSelectedFilterLabel(goodsTypes, '货物类型'),
+      hasSelection: goodsTypes.size > 0,
+      onClear: goodsTypes.size > 0 ? () => {
+        setGoodsTypes(new Set());
+        setActiveFilter(null);
+      } : undefined,
+    },
+    {
+      key: 'feedingMethod' as const,
+      label: getSelectedFilterLabel(feedingMethods, '饲养方式'),
+      hasSelection: feedingMethods.size > 0,
+      onClear: feedingMethods.size > 0 ? () => {
+        setFeedingMethods(new Set());
+        setActiveFilter(null);
+      } : undefined,
+    },
+    {
+      key: 'tag' as const,
+      label: getSelectedFilterLabel(tags, '标签'),
+      hasSelection: tags.size > 0,
+      onClear: tags.size > 0 ? () => {
+        setTags(new Set());
+        setActiveFilter(null);
+      } : undefined,
+    },
   ];
 
   function handleFilterPress(key: FilterKey) {
@@ -241,32 +406,58 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
     setActiveFilter(key as LocalFilterKey);
   }
 
+  const showSubstituteEntry = hasSubstituteEntry ?? !!data?.hasSubstitute;
+
   return (
     <View style={styles.container}>
       <DetailTopBar
         onBack={() => navigation.goBack()}
         onSearchPress={() => {
           navigation.popToTop();
-          navigation.navigate('Search', {category, keyword: searchKeyword});
+          navigation.navigate('Search', {category, keyword: searchKeyword, initialTab: tab});
         }}
         tags={[
           {
-            text: `${country}${factoryNo}`,
+            text: buildCFLabel(currentCountry, currentFactoryNo),
             onClose: () => {
               if (data?.productId) {
                 navigation.navigate('Product', {
                   productId: data.productId,
                   category,
                   productName,
+                  initialTab: tab,
                 });
               }
             },
           },
           {
             text: productName,
-            onClose: () => navigation.navigate('Factory', {country, factoryNo, category}),
+            onClose: () => navigation.navigate('Factory', {country, factoryNo, category, initialTab: tab}),
           },
         ]}
+        topSlot={
+          <OfferInquiryTabs
+            tab={tab}
+            onTabChange={handleTabChange}
+            showMerchant
+            onMerchantPress={() => {
+              navigation.replace('MerchantSearchResults', {
+                category,
+                searchKeyword,
+                tags: [buildCFLabel(country, factoryNo), productName],
+                merchantSearch: {
+                  display: searchKeyword,
+                  matchType: 'combined',
+                  type: '国家+厂号+产品',
+                  country,
+                  factoryNo,
+                  productName,
+                },
+                target: {screen: 'CountryFactoryProduct', country, factoryNo, productName},
+              });
+            }}
+          />
+        }
         rightAction={
           <SelfSelectButton category={category} card={selfSelectCard} payload={selfSelectPayload} />
         }
@@ -291,16 +482,16 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
             ListHeaderComponent={
               <View>
                 <CountryProductDashboard
-                  country={`${data.country || country}${data.factoryNo || factoryNo}`}
+                  country={buildCFLabel(currentCountry, currentFactoryNo)}
                   productName={data.productName || productName}
                   isInquiry={tab === 'inquiry'}
                   priceMin={data.priceMin}
                   priceMax={data.priceMax}
                   priceChange={data.priceChange}
                   priceChangeRate={data.priceChangeRate}
-                  offerCount={data.offerCount}
-                  inquiryCount={data.inquiryCount}
-                  merchantCount={data.merchantCount}
+                  offerCount={getTabCount(data, 'offer')}
+                  inquiryCount={getTabCount(data, 'inquiry')}
+                  merchantCount={getTabMerchantCount(data, tab)}
                   history7Days={data.priceHistory7Days}
                   history30Days={data.priceHistory30Days}
                 />
@@ -309,17 +500,11 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
             }
             renderSectionHeader={() => (
               <View style={styles.stickyHeader}>
-                <TabAndSortBar
-                  tab={tab}
-                  onTabChange={setTab}
-                  sort={sort}
-                  onSortChange={setSort}
-                  showPublishTime
-                />
                 <FilterBar
                   filters={filterDefs}
                   active={activeFilter as FilterKey | null}
                   onPress={handleFilterPress}
+                  onBottomLayout={setFilterPanelTop}
                 />
               </View>
             )}
@@ -327,9 +512,14 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
               <MerchantOfferGroupCard
                 group={item}
                 isInquiry={tab === 'inquiry'}
+                country={currentCountry}
+                factoryNo={currentFactoryNo}
+                productName={currentProductName}
                 onCopyPhone={item.merchantPhone ?? undefined}
                 onDial={item.merchantPhone ?? undefined}
                 onViewOriginalText={handleViewOriginalText}
+                onMerchantPress={() => openMerchantHome(item)}
+                hideSummaryMeta
               />
             )}
             ItemSeparatorComponent={() => <View style={styles.itemDivider} />}
@@ -348,7 +538,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
             ListEmptyComponent={!loading ? <Text style={styles.empty}>暂无数据</Text> : null}
           />
 
-          {data.hasSubstitute ? (
+          {showSubstituteEntry ? (
             <Pressable
               style={styles.substituteFab}
               onPress={() =>
@@ -403,7 +593,28 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
       ) : null}
 
       <FilterPanelSheet
+        visible={activeFilter === 'sort'}
+        topOffset={filterPanelTop}
+        title="排序方式"
+        onClose={() => setActiveFilter(null)}
+        onReset={() => {
+          setSort({kind: 'comprehensive'});
+          setActiveFilter(null);
+        }}
+        onConfirm={() => setActiveFilter(null)}
+        showActions={false}>
+        <SortSelectOptions
+          sort={sort}
+          onSelect={next => {
+            setSort(next);
+            setActiveFilter(null);
+          }}
+        />
+      </FilterPanelSheet>
+
+      <FilterPanelSheet
         visible={activeFilter === 'merchant'}
+        topOffset={filterPanelTop}
         title="商家筛选"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -437,6 +648,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'region'}
+        topOffset={filterPanelTop}
         title="地区"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -453,6 +665,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'priceRange'}
+        topOffset={filterPanelTop}
         title="价格区间"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -496,6 +709,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'goodsType'}
+        topOffset={filterPanelTop}
         title="货物类型"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -512,6 +726,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'feedingMethod'}
+        topOffset={filterPanelTop}
         title="饲养方式"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -528,6 +743,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
 
       <FilterPanelSheet
         visible={activeFilter === 'tag'}
+        topOffset={filterPanelTop}
         title="标签"
         onClose={() => setActiveFilter(null)}
         onReset={() => {
@@ -539,6 +755,7 @@ export function CountryFactoryProductScreen({navigation, route}: Props) {
           options={allTags}
           selected={tags}
           onToggle={value => setTags(prev => toggleSet(prev, value))}
+          groupSimilarTags
         />
       </FilterPanelSheet>
 
@@ -556,6 +773,60 @@ function sortToParam(sort: SortMode): string {
   if (sort.kind === 'comprehensive') return 'comprehensive';
   if (sort.kind === 'publishTime') return 'publish_time';
   return sort.order === 'asc' ? 'price_asc' : sort.order === 'desc' ? 'price_desc' : 'comprehensive';
+}
+
+function SortSelectOptions({sort, onSelect}: {sort: SortMode; onSelect: (next: SortMode) => void}) {
+  return (
+    <View style={styles.sortOptions}>
+      {sortOptions.map(option => {
+        const active = isSameSort(sort, option.value);
+        return (
+          <Pressable
+            key={option.label}
+            onPress={() => onSelect(option.value)}
+            style={[styles.sortOption, active && styles.sortOptionActive]}>
+            <Text style={[styles.sortOptionText, active && styles.sortOptionTextActive]}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function getSortLabel(sort: SortMode) {
+  if (sort.kind === 'publishTime') return '发布时间';
+  if (sort.kind === 'price') return sort.order === 'desc' ? '价格从高到低↓' : '价格从低到高↑';
+  return '综合排序';
+}
+
+function isSameSort(left: SortMode, right: SortMode) {
+  if (left.kind !== right.kind) return false;
+  if (left.kind !== 'price' || right.kind !== 'price') return true;
+  return left.order === right.order;
+}
+
+function getSelectedFilterLabel(values: Set<string>, fallback: string) {
+  if (values.size === 1) return Array.from(values)[0];
+  return values.size > 1 ? `${fallback}(${values.size})` : fallback;
+}
+
+function getSelectedOptionFilterLabel(values: Set<string>, options: MerchantFilterOption[], fallback: string) {
+  if (values.size === 1) {
+    const selected = Array.from(values)[0];
+    return options.find(option => option.key === selected)?.label ?? selected;
+  }
+  return values.size > 1 ? `${fallback}(${values.size})` : fallback;
+}
+
+function getPriceRangeFilterLabel(minInput: string, maxInput: string) {
+  const min = minInput.trim();
+  const max = maxInput.trim();
+  if (min && max) return `${min}-${max}`;
+  if (min) return `≥${min}`;
+  if (max) return `≤${max}`;
+  return '价格区间';
 }
 
 function mergeMerchantOffers(prev: MerchantOfferGroup[], incoming: MerchantOfferGroup[]) {
@@ -579,17 +850,64 @@ function mergeMerchantOffers(prev: MerchantOfferGroup[], incoming: MerchantOffer
   return Array.from(map.values());
 }
 
-function unique(values: string[]) {
-  const set = new Set<string>();
-  const out: string[] = [];
-  for (const value of values) {
-    const trimmed = value.trim();
-    if (!trimmed) continue;
-    if (set.has(trimmed)) continue;
-    set.add(trimmed);
-    out.push(trimmed);
+function normalizeMerchantFilterOptions(options: MerchantFilterOption[]) {
+  const seen = new Set<string>();
+  const result: MerchantFilterOption[] = [];
+
+  for (const option of options) {
+    const label = option.label?.trim() ?? '';
+    const key = `${option.key ?? ''}`.trim() || label;
+    if (!label || label === unlinkedMerchantLabel || seen.has(label)) continue;
+    seen.add(label);
+    result.push({key, label});
   }
-  return out;
+
+  return result;
+}
+
+async function resolveMerchantIdByName(category: string, merchantName: string) {
+  const normalizedName = normalizeMerchantNameForMatch(merchantName);
+  if (!normalizedName) return null;
+
+  const suggestions = await mooketApi.getSearchSuggestions(category, merchantName).catch(() => []);
+  const suggestion = suggestions.find(item => {
+    if (item.matchType !== 'merchant' || !normalizeMerchantTargetId(item.targetId)) return false;
+    return [item.merchantName, item.standardName, item.text].some(
+      value => normalizeMerchantNameForMatch(value) === normalizedName,
+    );
+  });
+  const suggestionId = normalizeMerchantTargetId(suggestion?.targetId);
+  if (suggestionId) return suggestionId;
+
+  const results = await loadMerchantSearchResults({
+    display: merchantName,
+    matchType: 'merchant',
+    type: '商家',
+    merchantName,
+  });
+  const exact = results.find(item => {
+    if (!normalizeMerchantTargetId(item.merchantId)) return false;
+    return [item.merchantName, item.merchantShortName].some(
+      value => normalizeMerchantNameForMatch(value) === normalizedName,
+    );
+  });
+  return normalizeMerchantTargetId(exact?.merchantId);
+}
+
+function normalizeMerchantTargetId(value?: number | string | null) {
+  if (value == null) return null;
+  const text = String(value).trim();
+  return text ? value : null;
+}
+
+function normalizeMerchantNameForMatch(value?: string | null) {
+  return stripSuggestionAlias(value).replace(/\s+/g, '').toLowerCase();
+}
+
+function stripSuggestionAlias(value?: string | null) {
+  const text = value?.trim() ?? '';
+  const aliasIndex = text.indexOf('(别名：');
+  return aliasIndex >= 0 ? text.slice(0, aliasIndex).trim() : text;
 }
 
 function toggleSet<T>(set: Set<T>, value: T): Set<T> {
@@ -619,18 +937,6 @@ function parsePriceValue(value?: string | number | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function groupPriceRange(group: MerchantOfferGroup) {
-  const prices = (group.employeeOffers ?? [])
-    .map(emp => parsePriceValue(emp.price))
-    .filter((value): value is number => value != null);
-
-  if (prices.length > 0) {
-    return normalizePriceRange(Math.min(...prices), Math.max(...prices));
-  }
-
-  return normalizePriceRange(null, null);
-}
-
 function formatPriceRangeHint(min?: number | null, max?: number | null) {
   if (min != null && max != null && min !== max) return `楼 ${min} - ${max} /kg`;
   if (min != null) return `楼 ${min} /kg`;
@@ -641,6 +947,7 @@ function formatPriceRangeHint(min?: number | null, max?: number | null) {
 const styles = StyleSheet.create({
   container: {flex: 1, backgroundColor: colors.background},
   loading: {paddingVertical: 48, alignItems: 'center'},
+  topTabs: {borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#EFF5F3', borderBottomWidth: 1, borderBottomColor: colors.border},
   gap: {height: 12, backgroundColor: '#F4FBF8'},
   itemDivider: {
     marginHorizontal: 16,
@@ -678,6 +985,32 @@ const styles = StyleSheet.create({
   priceRangeSeparator: {color: colors.textMuted, fontSize: 16, paddingBottom: 12},
   priceUnitHint: {marginTop: 12, color: '#6C7A77', fontSize: 12},
   priceHint: {marginTop: 8, color: '#9DA4A3', fontSize: 12},
+  sortOptions: {
+    gap: 10,
+  },
+  sortOption: {
+    minHeight: 42,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sortOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
+  },
+  sortOptionText: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  sortOptionTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
 
   substituteFab: {
     position: 'absolute',

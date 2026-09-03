@@ -9,7 +9,7 @@ type SearchHistoryPayload = {
   country?: string | null;
   factoryNo?: string | null;
   brandId?: number | null;
-  merchantId?: number | null;
+  merchantId?: number | string | null;
 };
 
 const EXAMPLE_CARD_TYPES = [
@@ -23,11 +23,10 @@ const EXAMPLE_CARD_TYPES = [
   'brandProduct',
 ];
 
-function toLong(value: number | string | null | undefined) {
+function toHistoryId(value: number | string | null | undefined) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
+    return value.trim();
   }
   return null;
 }
@@ -125,7 +124,7 @@ export function buildHomeCardSearchHistoryPayload(card: HomeCardItem): SearchHis
       return {
         searchWord: merchantName,
         searchType: '\u5546\u5bb6',
-        merchantId: toLong(card.merchantId),
+        merchantId: toHistoryId(card.merchantId),
       };
     }
     case 'factory':

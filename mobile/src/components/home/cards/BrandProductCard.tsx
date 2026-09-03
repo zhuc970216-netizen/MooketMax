@@ -75,11 +75,11 @@ export function BrandProductCard({card, onPress, onLongPress}: Props) {
 
       <View style={styles.bottomRow}>
         <View style={styles.colLeft}>
-          <Text style={sharedStyles.smallLabel}>今日报盘工厂</Text>
+          <Text style={sharedStyles.smallLabel}>近2日报盘工厂</Text>
           <Text style={sharedStyles.midStat}>{card.factoryCount ?? '--'}</Text>
         </View>
         <View style={styles.colRight}>
-          <Text style={sharedStyles.smallLabel}>今日报盘数</Text>
+          <Text style={sharedStyles.smallLabel}>近2日报盘数</Text>
           <Text style={sharedStyles.midStat}>{card.todayOfferCount ?? '--'}</Text>
         </View>
       </View>

@@ -6,6 +6,7 @@ import {fonts} from '../../theme/typography';
 import {getCountryFlag} from '../../utils/country';
 import type {HotFactory, HotProduct} from '../../types/api';
 import {formatCount} from '../../utils/format';
+import {FeedStatLink} from './FeedStatLink';
 
 type Props = {
   country: string;
@@ -17,6 +18,7 @@ type Props = {
   hotProducts?: HotProduct[];
   onFactoryClick?: (factoryNo: string) => void;
   onProductClick?: (productName: string) => void;
+  onFeedPress?: () => void;
 };
 
 /**
@@ -35,6 +37,7 @@ export function CountryDashboard({
   hotProducts = [],
   onFactoryClick,
   onProductClick,
+  onFeedPress,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const flag = getCountryFlag(country);
@@ -53,10 +56,14 @@ export function CountryDashboard({
           </View>
         </View>
 
-        <View style={styles.right}>
-          <Text style={styles.smallLabel}>{isInquiry ? '近2日求购' : '近2日报盘'}</Text>
-          <Text style={styles.bigValue}>{formatCount(offerCount ?? 0)}</Text>
-        </View>
+        <FeedStatLink
+          label={isInquiry ? '近2日求购' : '近2日报盘'}
+          value={formatCount(offerCount ?? 0)}
+          layout="large"
+          align="end"
+          onPress={onFeedPress}
+          style={styles.right}
+        />
       </View>
 
       <View style={styles.hr} />

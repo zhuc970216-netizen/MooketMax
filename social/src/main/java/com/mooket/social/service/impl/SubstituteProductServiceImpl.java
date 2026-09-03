@@ -6,7 +6,6 @@ import com.mooket.social.dto.GroupedOfferFilterOptionsDTO;
 import com.mooket.social.entity.BizOffer;
 import com.mooket.social.entity.DictMerchant;
 import com.mooket.social.entity.DictProduct;
-import com.mooket.social.entity.FactoryTier;
 import com.mooket.social.mapper.*;
 import com.mooket.social.service.SubstituteProductService;
 import org.springframework.stereotype.Service;
@@ -44,13 +43,20 @@ public class SubstituteProductServiceImpl implements SubstituteProductService {
     @Override
     public SubstituteProductDTO getSubstituteProducts(String country, String factoryNo, String productName, String category) {
         // 1. 查询当前厂号的等级
-        String tier = factoryTierMapper.selectTierByFactoryNo(category, productName, factoryNo);
+        List<String> tierLookupProductNames = resolveTierLookupProductNames(category, productName, null);
+        String tier = tierLookupProductNames.isEmpty()
+                ? null
+                : factoryTierMapper.selectTierByFactoryNoAndProductNames(category, tierLookupProductNames, factoryNo);
         if (tier == null) {
             return new SubstituteProductDTO();
         }
 
         // 2. 查询同产品同等级的所有厂号
-        List<String> factoryNos = factoryTierMapper.selectFactoryNosByTier(category, productName, tier);
+        List<String> factoryNos = factoryTierMapper.selectFactoryNosByTierAndProductNames(
+                category,
+                tierLookupProductNames,
+                tier
+        );
         if (factoryNos == null || factoryNos.isEmpty()) {
             return new SubstituteProductDTO();
         }
@@ -126,7 +132,10 @@ public class SubstituteProductServiceImpl implements SubstituteProductService {
         }
 
         // 获取等级
-        String tier = factoryTierMapper.selectTierByFactoryNo(category, productName, factoryNo);
+        List<String> tierLookupProductNames = resolveTierLookupProductNames(category, productName, product);
+        String tier = tierLookupProductNames.isEmpty()
+                ? null
+                : factoryTierMapper.selectTierByFactoryNoAndProductNames(category, tierLookupProductNames, factoryNo);
         dto.setTier(tier);
 
         // 看板统计
@@ -375,6 +384,48 @@ public class SubstituteProductServiceImpl implements SubstituteProductService {
             return "comprehensive";
         }
         return sortBy;
+    }
+
+    private List<String> resolveTierLookupProductNames(String category, String productName, DictProduct product) {
+        LinkedHashSet<String> productNames = new LinkedHashSet<>();
+        addTierLookupProductName(productNames, productName);
+
+        DictProduct resolvedProduct = product;
+        if (resolvedProduct == null && productName != null && !productName.isBlank()) {
+            resolvedProduct = productMapper.findByName(category, productName);
+            if (resolvedProduct == null) {
+                resolvedProduct = productMapper.selectByProductName(productName);
+            }
+        }
+
+        if (resolvedProduct != null) {
+            addTierLookupProductName(productNames, resolvedProduct.getProductName());
+            for (String alias : splitAliasValues(resolvedProduct.getAliasList())) {
+                addTierLookupProductName(productNames, alias);
+            }
+        }
+
+        return new ArrayList<>(productNames);
+    }
+
+    private void addTierLookupProductName(Set<String> productNames, String value) {
+        if (value == null) {
+            return;
+        }
+        String trimmed = value.trim();
+        if (!trimmed.isEmpty()) {
+            productNames.add(trimmed);
+        }
+    }
+
+    private List<String> splitAliasValues(String aliasList) {
+        if (aliasList == null || aliasList.isBlank()) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(aliasList.split("[,\uFF0C\u3001]"))
+                .map(String::trim)
+                .filter(alias -> !alias.isEmpty())
+                .toList();
     }
 
     private GroupedOfferFilterOptionsDTO buildFilterOptions(List<BizOffer> offers, Map<Long, DictMerchant> merchantMap) {

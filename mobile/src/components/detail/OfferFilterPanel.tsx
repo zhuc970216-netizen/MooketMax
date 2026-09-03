@@ -15,6 +15,8 @@ export type OfferFilterState = {
 
 type FilterBucket = Exclude<keyof OfferFilterState, 'quick'>;
 
+const unlinkedMerchantLabel = '暂未关联行业商家';
+
 type Props = {
   groups: MerchantOfferGroup[];
   value: OfferFilterState;
@@ -86,7 +88,9 @@ export function applyOfferFilters(groups: MerchantOfferGroup[], filters: OfferFi
 }
 
 export function OfferFilterPanel({groups, value, onChange}: Props) {
-  const merchants = uniqueOptions(groups.map(group => merchantFilterKey(group)).filter(Boolean));
+  const merchants = uniqueOptions(
+    groups.map(group => merchantFilterKey(group)).filter(name => name && name !== unlinkedMerchantLabel),
+  );
   const locations = uniqueOptions(
     groups.flatMap(group => group.employeeOffers.map(offer => offer.goodsLocation ?? '')).filter(Boolean),
   );

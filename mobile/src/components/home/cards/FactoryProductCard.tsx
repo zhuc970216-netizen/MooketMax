@@ -28,8 +28,11 @@ export function FactoryProductCard({card, onPress, onLongPress}: Props) {
       <View style={styles.titleBlock}>
         <View style={styles.titleWrap}>
           {flag ? <Text style={styles.flag}>{flag}</Text> : null}
-          <Text style={styles.titleText} numberOfLines={1}>
-            {`${card.countryAlias ?? card.country ?? '--'} ${card.factoryNo ?? ''}`}
+          <Text style={styles.countryText} numberOfLines={1}>
+            {card.countryAlias ?? card.country ?? '--'}
+          </Text>
+          <Text style={styles.factoryText} numberOfLines={1}>
+            {card.factoryNo ?? ''}
           </Text>
         </View>
         {card.productName ? (
@@ -79,11 +82,11 @@ export function FactoryProductCard({card, onPress, onLongPress}: Props) {
 
       <View style={styles.bottomRow}>
         <View style={styles.col}>
-          <Text style={sharedStyles.smallLabel}>今日报盘数</Text>
+          <Text style={sharedStyles.smallLabel}>近2日报盘数</Text>
           <Text style={sharedStyles.midStat}>{card.todayOfferCount ?? '--'}</Text>
         </View>
         <View style={styles.col}>
-          <Text style={sharedStyles.smallLabel}>今日求购数</Text>
+          <Text style={sharedStyles.smallLabel}>近2日求购数</Text>
           <Text style={sharedStyles.midStat}>{card.inquiryCount ?? '--'}</Text>
         </View>
       </View>
@@ -101,8 +104,24 @@ const styles = StyleSheet.create({
   card: {...cardBaseStyle, gap: 6},
   pressed: {opacity: 0.85},
   titleBlock: {gap: 0},
-  titleWrap: {flexDirection: 'row', alignItems: 'center', gap: 6},
+  titleWrap: {flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'nowrap'},
   flag: {fontSize: 20, lineHeight: 28},
+  countryText: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 28,
+    fontWeight: '500',
+    flexShrink: 0,
+  },
+  factoryText: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 28,
+    fontWeight: '500',
+    flexShrink: 1,
+    minWidth: 0,
+    includeFontPadding: false,
+  },
   titleText: {color: colors.text, fontSize: 16, lineHeight: 28, fontWeight: '500'},
   priceLine: {flexDirection: 'row', alignItems: 'baseline'},
   priceValue: {fontFamily: fonts.manropeBold, color: colors.price, fontSize: 20, lineHeight: 26},

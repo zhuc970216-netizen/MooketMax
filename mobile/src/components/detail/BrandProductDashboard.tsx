@@ -3,17 +3,24 @@ import {StyleSheet, Text, View} from 'react-native';
 import {colors} from '../../theme/colors';
 import {fonts} from '../../theme/typography';
 import {formatCount} from '../../utils/format';
+import {getRecentBrandInquiryCount, getRecentBrandOfferCount} from '../../utils/brandStats';
+import {FeedStatLink} from './FeedStatLink';
 
 type Props = {
   brandName: string;
   productName: string;
   isInquiry?: boolean;
   todayOfferCount?: number | null;
+  yesterdayOfferCount?: number | null;
   todayInquiryCount?: number | null;
+  yesterdayInquiryCount?: number | null;
+  totalOfferCount?: number | null;
+  totalInquiryCount?: number | null;
   priceMin?: number | null;
   priceMax?: number | null;
   merchantCount?: number | null;
   factoryCount?: number | null;
+  onFeedPress?: () => void;
 };
 
 /**
@@ -30,13 +37,20 @@ export function BrandProductDashboard({
   productName,
   isInquiry = false,
   todayOfferCount,
+  yesterdayOfferCount,
   todayInquiryCount,
+  yesterdayInquiryCount,
+  totalOfferCount,
+  totalInquiryCount,
   priceMin,
   priceMax,
   merchantCount,
   factoryCount,
+  onFeedPress,
 }: Props) {
-  const bigValue = isInquiry ? todayInquiryCount ?? 0 : todayOfferCount ?? 0;
+  const bigValue = isInquiry
+    ? getRecentBrandInquiryCount({todayInquiryCount, yesterdayInquiryCount, totalInquiryCount}) ?? 0
+    : getRecentBrandOfferCount({todayOfferCount, yesterdayOfferCount, totalOfferCount}) ?? 0;
   const priceText = formatPrice(priceMin, priceMax);
 
   return (
@@ -51,15 +65,12 @@ export function BrandProductDashboard({
             <Text style={styles.titlePart} numberOfLines={1}>{productName}</Text>
           </View>
           {/* 第2段：近2日报盘 - 对齐右侧分隔线 */}
-          <Text style={styles.smallLabel}>{isInquiry ? '近2日求购' : '近2日报盘'}</Text>
-          {/* 第3段：大数字 - 对齐右侧商家数/工厂数顶部 */}
-          <Text
-            style={styles.bigValue}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            allowFontScaling={false}>
-            {formatCount(bigValue)}
-          </Text>
+          <FeedStatLink
+            label={isInquiry ? '近2日求购' : '近2日报盘'}
+            value={formatCount(bigValue)}
+            layout="large"
+            onPress={onFeedPress}
+          />
         </View>
 
         {/* 右侧 */}
@@ -142,7 +153,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     flexShrink: 1,
   },
-  priceMuted: {color: '#9DA4A3'},
+  priceMuted: {color: colors.primary, fontSize: 14},
   priceUnit: {
     fontFamily: fonts.manropeRegular,
     color: colors.text,

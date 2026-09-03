@@ -29,6 +29,7 @@ import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -38,6 +39,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class DataSyncService {
+
+    static final ZoneId APP_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final SocialOnlineBusinessMapper sourceMapper;
     private final BizOfferMapper targetMapper;
@@ -117,7 +120,7 @@ public class DataSyncService {
 
         // 1. 获取源数据（基于 update_time 增量查询）
         boolean reconcileRecentWindow = true;
-        LocalDateTime startTime = lastSyncTime == null ? LocalDateTime.now().minusDays(2) : lastSyncTime;
+        LocalDateTime startTime = lastSyncTime == null ? LocalDateTime.now(APP_ZONE).minusDays(2) : lastSyncTime;
         return doSync(startTime, reconcileRecentWindow);
     }
 
@@ -127,7 +130,7 @@ public class DataSyncService {
     public synchronized int syncFull() {
         System.out.println("[DataSyncService] 开始执行全量同步（最近2天）...");
         lastSyncTime = null; // 重置同步时间，强制全量
-        LocalDateTime startTime = LocalDateTime.now().minusDays(2);
+        LocalDateTime startTime = LocalDateTime.now(APP_ZONE).minusDays(2);
         return doSync(startTime, true);
     }
 
@@ -178,7 +181,7 @@ public class DataSyncService {
         if (reconcileRecentWindow) {
             reconcileRecentSourceBusinessIds();
         }
-        lastSyncTime = LocalDateTime.now();
+        lastSyncTime = LocalDateTime.now(APP_ZONE);
 
         System.out.println("[DataSyncService] 同步完成: 成功=" + successCount + ", 失败=" + failCount);
         return successCount;
@@ -283,7 +286,7 @@ public class DataSyncService {
     }
 
     private void reconcileRecentSourceBusinessIds() {
-        LocalDateTime recentWindowStart = LocalDate.now().minusDays(1).atStartOfDay();
+        LocalDateTime recentWindowStart = LocalDate.now(APP_ZONE).minusDays(1).atStartOfDay();
         List<Long> activeSourceIds = sourceMapper.selectActiveIdsByOfferDate(recentWindowStart);
         System.out.println("[DataSyncService] recent active source ids: " + activeSourceIds.size());
 
@@ -680,11 +683,13 @@ public class DataSyncService {
         // tags: 通过 social_online_business_tag 按 online_business_id 聚合（仅当前窗口）
         target.setTags(tagMap.get(src.getId()));
 
-        // publish_time
-        target.setPublishTime(src.getOfferDate());
+        // Keep the live offer board on today's display date so midnight refresh is not
+        // overwritten by the next incremental sync writing the source offer date back.
+        LocalDateTime displayPublishTime = normalizeDisplayPublishTime(src.getOfferDate());
+        target.setPublishTime(displayPublishTime);
 
-        // data_date
-        target.setDataDate(src.getOfferDate() != null ? src.getOfferDate().toLocalDate() : LocalDate.now());
+        // Preserve the source report date for historical statistics and trend calculations.
+        target.setDataDate(src.getOfferDate() != null ? src.getOfferDate().toLocalDate() : LocalDate.now(APP_ZONE));
 
         // status: 1=已过期, 3=ACTIVE
         target.setStatus(src.getStatus() != null ?
@@ -716,6 +721,14 @@ public class DataSyncService {
      */
     public LocalDateTime getLastSyncTime() {
         return lastSyncTime;
+    }
+
+    static LocalDateTime normalizeDisplayPublishTime(LocalDateTime sourceOfferDate) {
+        LocalDate displayDate = LocalDate.now(APP_ZONE);
+        if (sourceOfferDate == null) {
+            return displayDate.atStartOfDay();
+        }
+        return displayDate.atTime(sourceOfferDate.toLocalTime());
     }
 
     /**

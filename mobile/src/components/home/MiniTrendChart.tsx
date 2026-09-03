@@ -20,7 +20,7 @@ export function buildTrendChartPoints(
   width: number,
   height: number,
   padX = 4,
-  padY = 4,
+  padY = 3,
 ): TrendChartPoint[] {
   if (data.length < 2) {
     return [];
@@ -37,19 +37,34 @@ export function buildTrendChartPoints(
   });
 }
 
-/**
- * 卡片中的迷你价格趋势线（30 日）
- */
-export function MiniTrendChart({data, width = 280, height = 46, color = colors.primary}: Props) {
-  if (data.length < 2) {
-    return <View style={{height}} />;
-  }
-  const points = buildTrendChartPoints(data, width, height)
+export function buildTrendPointString(data: number[], width: number, height: number, padX = 4, padY = 3) {
+  return buildTrendChartPoints(data, width, height, padX, padY)
     .map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`)
     .join(' ');
+}
+
+export function MiniTrendChart({data, width = 280, height = 46, color = colors.primary}: Props) {
+  if (data.length < 2) {
+    return <View style={{width, height}} />;
+  }
+
+  const points = buildTrendPointString(data, width, height);
+  if (!points) {
+    return <View style={{width, height}} />;
+  }
+
   return (
-    <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
-      <Polyline points={points} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-    </Svg>
+    <View style={{width, height}}>
+      <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+        <Polyline
+          points={points}
+          fill="none"
+          stroke={color}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>
+    </View>
   );
 }

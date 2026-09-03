@@ -16,7 +16,7 @@ type SelfSelectPayload = {
   country?: string | null;
   factoryNo?: string | null;
   brandId?: number | null;
-  merchantId?: number | null;
+  merchantId?: number | string | null;
 };
 
 type Props = {
@@ -30,19 +30,20 @@ const archiveDelIconXml = `<svg viewBox="0 0 18 18" xmlns="http://www.w3.org/200
 const keySeparator = '\u001f';
 
 export function SelfSelectButton({ category, card, payload }: Props) {
+  const supported = isSupportedSelfSelectCard(card);
   const [selected, setSelected] = useState(false);
   const [historyId, setHistoryId] = useState<number | null>(null);
   const [pending, setPending] = useState(false);
   const candidateSignature = useMemo(
-    () => (card ? getSelfSelectCandidateKeys(card).join(keySeparator) : ''),
-    [card],
+    () => (supported && card ? getSelfSelectCandidateKeys(card).join(keySeparator) : ''),
+    [card, supported],
   );
   const payloadSignature = useMemo(
     () =>
       payload
         ? getSearchCandidateKey(payload.searchType, payload.searchWord)
         : '',
-    [payload?.searchType, payload?.searchWord],
+    [payload],
   );
   const entityName = payload?.searchWord.trim() || getSelfSelectEntityName(card);
 
@@ -80,6 +81,8 @@ export function SelfSelectButton({ category, card, payload }: Props) {
       };
     }, [candidateSignature, category, payloadSignature]),
   );
+
+  if (!supported) return null;
 
   const disabled = pending || !candidateSignature || (!selected && !payload);
 
@@ -198,6 +201,12 @@ async function findSelfSelectRecord(
   );
   if (payloadSignature) targetKeys.add(payloadSignature);
 
+  const response = await mooketApi.getSelfSelectCards(category);
+  const card = (response.cards ?? []).find(item =>
+    getSelfSelectCandidateKeys(item).some(key => targetKeys.has(key)),
+  );
+  if (card?.historyId != null) return { historyId: card.historyId };
+
   try {
     const histories = await mooketApi.getSelfSelectSearches();
     const history = histories.find(item =>
@@ -205,21 +214,20 @@ async function findSelfSelectRecord(
     );
     if (history) return { historyId: history.historyId };
   } catch {
-    // Fall back to cards for older servers that do not expose raw self-select history.
+    // Older servers may not expose raw self-select history. Keep the card match if it exists.
   }
 
-  const response = await mooketApi.getSelfSelectCards(category);
-  const card = (response.cards ?? []).find(item =>
-    getSelfSelectCandidateKeys(item).some(key => targetKeys.has(key)),
-  );
   return card ? { historyId: card.historyId ?? null } : null;
+}
+
+function isSupportedSelfSelectCard(card: HomeCardItem | null) {
+  return card?.cardType === 'factoryProduct' || card?.cardType === 'merchant';
 }
 
 export function toHistoryMerchantId(value: number | string | null | undefined) {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
+    return value.trim();
   }
   return null;
 }
